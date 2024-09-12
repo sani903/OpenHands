@@ -108,6 +108,8 @@ class AgentController:
         self.max_budget_per_task = max_budget_per_task
         self.agent_to_llm_config = agent_to_llm_config if agent_to_llm_config else {}
         self.agent_configs = agent_configs if agent_configs else {}
+        self._initial_max_iterations = max_iterations
+        self._initial_max_budget_per_task = max_budget_per_task
 
         # stuck helper
         self._stuck_detector = StuckDetector(self.state)
@@ -220,6 +222,8 @@ class AgentController:
                 logger.info(event, extra={'msg_type': 'OBSERVATION'})
             elif isinstance(event, ErrorObservation):
                 logger.info(event, extra={'msg_type': 'OBSERVATION'})
+                if self.state.agent_state == AgentState.ERROR:
+                    self.state.metrics.merge(self.state.local_metrics)
 
     def _handle_delegate_action(self, event: AgentDelegateAction):
         logger.debug('AgentDelegateAction received')
@@ -239,9 +243,17 @@ class AgentController:
         delegate_end = event.id
 
         # Find the corresponding delegate action and update its end_id
-        for delegate_start, (delegate_agent, delegate_task, _) in self.state.delegates.items():
+        for delegate_start, (
+            delegate_agent,
+            delegate_task,
+            _,
+        ) in self.state.delegates.items():
             if self.state.delegates[delegate_start][2] == -1:
-                self.state.delegates[delegate_start] = (delegate_agent, delegate_task, delegate_end)
+                self.state.delegates[delegate_start] = (
+                    delegate_agent,
+                    delegate_task,
+                    delegate_end,
+                )
                 logger.debug(
                     f'Delegate {delegate_agent} with task {delegate_task} ended at id={delegate_end}'
                 )
@@ -277,6 +289,21 @@ class AgentController:
         ):
             # user intends to interrupt traffic control and let the task resume temporarily
             self.state.traffic_control_state = TrafficControlState.PAUSED
+            # User has chosen to deliberately continue - lets double the max iterations
+            if (
+                self.state.iteration is not None
+                and self.state.max_iterations is not None
+                and self._initial_max_iterations is not None
+            ):
+                if self.state.iteration >= self.state.max_iterations:
+                    self.state.max_iterations += self._initial_max_iterations
+            if (
+                self.state.metrics.accumulated_cost is not None
+                and self.max_budget_per_task is not None
+                and self._initial_max_budget_per_task is not None
+            ):
+                if self.state.metrics.accumulated_cost >= self.max_budget_per_task:
+                    self.max_budget_per_task += self._initial_max_budget_per_task
 
         self.state.agent_state = new_state
         if new_state == AgentState.STOPPED or new_state == AgentState.ERROR:
@@ -364,9 +391,6 @@ class AgentController:
             return
 
         if self._pending_action:
-            logger.debug(
-                f'[Agent Controller {self.id}] waiting for pending action: {self._pending_action}'
-            )
             await asyncio.sleep(1)
             return
 
@@ -381,10 +405,14 @@ class AgentController:
                 f'[Agent Controller {self.id}] Delegate state: {delegate_state}'
             )
             if delegate_state == AgentState.ERROR:
+                # update iteration that shall be shared across agents
+                self.state.iteration = self.delegate.state.iteration
+
                 # close the delegate upon error
                 await self.delegate.close()
                 self.delegate = None
                 self.delegateAction = None
+
                 await self.report_error('Delegator agent encounters an error')
                 return
             delegate_done = delegate_state in (AgentState.FINISHED, AgentState.REJECTED)

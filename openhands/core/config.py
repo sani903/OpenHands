@@ -12,7 +12,6 @@ import toml
 from dotenv import load_dotenv
 
 from openhands.core import logger
-from openhands.core.utils import Singleton
 
 load_dotenv()
 
@@ -52,6 +51,8 @@ class LLMConfig:
         output_cost_per_token: The cost per output token. This will available in logs for the user to check.
         ollama_base_url: The base URL for the OLLAMA API.
         drop_params: Drop any unmapped (unsupported) params without causing an exception.
+        disable_vision: If model is vision capable, this option allows to disable image processing (useful for cost reduction).
+        caching_prompt: Using the prompt caching feature provided by the LLM.
     """
 
     model: str = 'gpt-4o'
@@ -64,10 +65,10 @@ class LLMConfig:
     aws_access_key_id: str | None = None
     aws_secret_access_key: str | None = None
     aws_region_name: str | None = None
-    num_retries: int = 10
+    num_retries: int = 8
     retry_multiplier: float = 2
-    retry_min_wait: int = 3
-    retry_max_wait: int = 300
+    retry_min_wait: int = 15
+    retry_max_wait: int = 120
     timeout: int | None = None
     max_message_chars: int = 10_000  # maximum number of characters in an observation's content when sent to the llm
     temperature: float = 0
@@ -79,6 +80,8 @@ class LLMConfig:
     output_cost_per_token: float | None = None
     ollama_base_url: str | None = None
     drop_params: bool | None = None
+    disable_vision: bool | None = None
+    caching_prompt: bool = False
 
     def defaults_to_dict(self) -> dict:
         """Serialize fields to a dict for the frontend, including type hints, defaults, and whether it's optional."""
@@ -123,11 +126,13 @@ class AgentConfig:
     """Configuration for the agent.
 
     Attributes:
+        micro_agent_name: The name of the micro agent to use for this agent.
         memory_enabled: Whether long-term memory (embeddings) is enabled.
         memory_max_threads: The maximum number of threads indexing at the same time for embeddings.
         llm_config: The name of the llm config to use. If specified, this will override global llm config.
     """
 
+    micro_agent_name: str | None = None
     memory_enabled: bool = False
     memory_max_threads: int = 2
     llm_config: str | None = None
@@ -141,7 +146,7 @@ class AgentConfig:
 
 
 @dataclass
-class SecurityConfig(metaclass=Singleton):
+class SecurityConfig:
     """Configuration for security related functionalities.
 
     Attributes:
@@ -174,12 +179,13 @@ class SecurityConfig(metaclass=Singleton):
 
 
 @dataclass
-class SandboxConfig(metaclass=Singleton):
+class SandboxConfig:
     """Configuration for the sandbox.
 
     Attributes:
         api_hostname: The hostname for the EventStream Runtime API.
-        container_image: The container image to use for the sandbox.
+        base_container_image: The base container image from which to build the runtime image.
+        runtime_container_image: The runtime container image to use.
         user_id: The user ID for the sandbox.
         timeout: The timeout for the sandbox.
         enable_auto_lint: Whether to enable auto-lint.
@@ -199,7 +205,9 @@ class SandboxConfig(metaclass=Singleton):
     """
 
     api_hostname: str = 'localhost'
-    container_image: str = 'nikolaik/python-nodejs:python3.11-nodejs22'  # default to nikolaik/python-nodejs:python3.11-nodejs22 for eventstream runtime
+    api_key: str | None = None
+    base_container_image: str = 'nikolaik/python-nodejs:python3.11-nodejs22'  # default to nikolaik/python-nodejs:python3.11-nodejs22 for eventstream runtime
+    runtime_container_image: str | None = None
     user_id: int = os.getuid() if hasattr(os, 'getuid') else 1000
     timeout: int = 120
     enable_auto_lint: bool = (
@@ -237,7 +245,7 @@ class UndefinedString(str, Enum):
 
 
 @dataclass
-class AppConfig(metaclass=Singleton):
+class AppConfig:
     """Configuration for the app.
 
     Attributes:
@@ -561,7 +569,12 @@ def load_from_toml(cfg: AppConfig, toml_file: str = 'config.toml'):
             sandbox_config = SandboxConfig(**toml_config['sandbox'])
 
         # update the config object with the new values
-        AppConfig(sandbox=sandbox_config, **core_config)
+        cfg.sandbox = sandbox_config
+        for key, value in core_config.items():
+            if hasattr(cfg, key):
+                setattr(cfg, key, value)
+            else:
+                logger.openhands_logger.warning(f'Unknown core config key: {key}')
     except (TypeError, KeyError) as e:
         logger.openhands_logger.warning(
             f'Cannot parse config from toml, toml values have not been applied.\nError: {e}',
@@ -610,7 +623,7 @@ def get_llm_config_arg(
     model = 'gpt-3.5-turbo'
     api_key = '...'
     temperature = 0.5
-    num_retries = 10
+    num_retries = 8
     ...
     ```
 
@@ -735,6 +748,12 @@ def get_parser() -> argparse.ArgumentParser:
         default='default',
         type=str,
         help='Name for the session',
+    )
+    parser.add_argument(
+        '--eval-ids',
+        default=None,
+        type=str,
+        help='The comma-separated list (in quotes) of IDs of the instances to evaluate',
     )
     return parser
 

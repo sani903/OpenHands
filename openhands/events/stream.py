@@ -14,6 +14,7 @@ from openhands.events.action.agent import (
 )
 from openhands.events.action.empty import NullAction
 from openhands.events.action.message import MessageAction
+from openhands.events.event import Event, EventSource
 from openhands.events.observation import Observation
 from openhands.events.observation.agent import AgentStateChangedObservation
 from openhands.events.observation.commands import CmdOutputObservation
@@ -21,8 +22,6 @@ from openhands.events.observation.delegate import AgentDelegateObservation
 from openhands.events.observation.empty import NullObservation
 from openhands.events.serialization.event import event_from_dict, event_to_dict
 from openhands.storage import FileStore
-
-from .event import Event, EventSource
 
 
 class EventStreamSubscriber(str, Enum):
