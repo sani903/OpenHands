@@ -13,12 +13,9 @@ import pandas as pd
 from pydantic import BaseModel
 from tqdm import tqdm
 
-from openhands.controller.state.state import State
 from openhands.core.config import LLMConfig
 from openhands.core.logger import get_console_handler
 from openhands.core.logger import openhands_logger as logger
-from openhands.events.action import Action
-from openhands.events.action.message import MessageAction
 
 
 class EvalMetadata(BaseModel):
@@ -83,49 +80,92 @@ class EvalOutput(BaseModel):
         return json.dumps(dumped_dict)
 
 
-def codeact_user_response(
-    state: State,
-    encapsulate_solution: bool = False,
-    try_parse: Callable[[Action], str] | None = None,
-) -> str:
-    encaps_str = (
-        (
-            'Please encapsulate your final answer (answer ONLY) within <solution> and </solution>.\n'
-            'For example: The answer to the question is <solution> 42 </solution>.\n'
-        )
-        if encapsulate_solution
-        else ''
-    )
-    msg = (
-        'Please continue working on the task on whatever approach you think is suitable.\n'
-        'If you think you have solved the task, please first send your answer to user through message and then <execute_bash> exit </execute_bash>.\n'
-        f'{encaps_str}'
-        'IMPORTANT: YOU SHOULD NEVER ASK FOR HUMAN HELP.\n'
-    )
+# def codeact_user_response(
+#    state: State,
+#    encapsulate_solution: bool = False,
+#    try_parse: Callable[[Action], str] | None = None,
+# ) -> str:
+#    encaps_str = (
+#        (
+#            'Please encapsulate your final answer (answer ONLY) within <solution> and </solution>.\n'
+#            'For example: The answer to the question is <solution> 42 </solution>.\n'
+#        )
+#        if encapsulate_solution
+#        else ''
+#    )
+#    msg = (
+#        'Please continue working on the task on whatever approach you think is suitable.\n'
+#        'If you think you have solved the task, please first send your answer to user through message and then <execute_bash> exit </execute_bash>.\n'
+#        f'{encaps_str}'
+#        'IMPORTANT: YOU SHOULD NEVER ASK FOR HUMAN HELP.\n'
+#    )
+#
+#    if state.history:
+# check if the last action has an answer, if so, early exit
+#        if try_parse is not None:
+#            last_action = state.history.get_last_action()
+#            ans = try_parse(last_action)
+#            if ans is not None:
+#                return '/exit'
 
-    if state.history:
-        # check if the last action has an answer, if so, early exit
-        if try_parse is not None:
-            last_action = state.history.get_last_action()
-            ans = try_parse(last_action)
-            if ans is not None:
-                return '/exit'
+# check if the agent has tried to talk to the user 3 times, if so, let the agent know it can give up
+#        user_msgs = [
+#            event
+#            for event in state.history.get_events()
+#            if isinstance(event, MessageAction) and event.source == 'user'
+#        ]
+#        if len(user_msgs) >= 2:
+# let the agent know that it can give up when it has tried 3 times
+#            return (
+#                msg
+#                + 'If you want to give up, run: <execute_bash> exit </execute_bash>.\n'
+#            )
+#    return msg
+# from evaluation.swe_bench.run_infer import fake_user
+# def codeact_user_response(
+#    state: State,
+#    encapsulate_solution: bool = False,
+#    try_parse: Callable[[Action], str] | None = None,
+# ) -> str:
+#    if state.history:
+#        # check if the last action has an answer, if so, early exit
+#        if try_parse is not None:
+#            last_action = state.history.get_last_action()
+#            ans = try_parse(last_action)
+#            if ans is not None:
+#                return '/exit'
+#    last_agent_message = None
+#    for event in reversed(state.history.get_events()):
+#        if isinstance(event, MessageAction) and event.source == 'agent':
+#            last_agent_message = event.content
+#            break
 
-        # check if the agent has tried to talk to the user 3 times, if so, let the agent know it can give up
-        user_msgs = [
-            event
-            for event in state.history.get_events()
-            if isinstance(event, MessageAction) and event.source == 'user'
-        ]
-        if len(user_msgs) >= 2:
-            # let the agent know that it can give up when it has tried 3 times
-            return (
-                msg
-                + 'If you want to give up, run: <execute_bash> exit </execute_bash>.\n'
-            )
-    return msg
 
-
+#    if last_agent_message:
+#        msg = fake_user.generate_reply(last_agent_message)
+#    else:
+#        msg = "Please continue working on the task."
+#    user_msgs = [
+#        event
+#        for event in state.history.get_events()
+#        if isinstance(event, MessageAction) and event.source == 'user'
+#    ]
+#    encaps_str = (
+#       (
+#          'Please encapsulate your final answer (answer ONLY) within <solution> and </solution>.\n'
+#         'For example: The answer to the question is <solution> 42 </solution>.\n'
+#    )
+#   if encapsulate_solution
+#  else ''
+# )
+#    msg+=encaps_str
+#    if len(user_msgs) >= 5:
+# let the agent know that it can give up when it has tried 3 times
+#        return (
+#           msg
+#          + 'If you want to give up, run: <execute_bash> exit </execute_bash>.\n'
+#     )
+# return msg
 def cleanup():
     print('Cleaning up child processes...')
     for process in mp.active_children():

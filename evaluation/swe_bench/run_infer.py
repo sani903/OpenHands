@@ -4,16 +4,15 @@ import os
 import tempfile
 from typing import Any
 
+import openai
 import pandas as pd
 import toml
-from datasets import load_dataset
 
 import agenthub
 from evaluation.swe_bench.prompt import CODEACT_SWE_PROMPT
 from evaluation.utils.shared import (
     EvalMetadata,
     EvalOutput,
-    codeact_user_response,
     make_metadata,
     prepare_dataset,
     reset_logger_for_multiprocessing,
@@ -28,18 +27,73 @@ from openhands.core.config import (
 )
 from openhands.core.logger import openhands_logger as logger
 from openhands.core.main import create_runtime, run_controller
-from openhands.events.action import CmdRunAction
+from openhands.events.action import CmdRunAction, MessageAction
 from openhands.events.observation import CmdOutputObservation, ErrorObservation
 from openhands.runtime.runtime import Runtime
 from openhands.runtime.utils.shutdown_listener import sleep_if_should_continue
+
+client = openai.OpenAI(
+    api_key=os.environ['LITELLM_API_KEY'],
+    base_url='https://cmu.litellm.ai',
+)
+
+
+class FakeUser:
+    def __init__(self, issue, hidden_details):
+        self.system_message = f"""
+        You are a GitHub user reporting an issue. Here are the details of your issue and environment:
+
+        Issue: {issue}
+
+        Hidden details (only reveal if specifically asked):
+        {' '.join(hidden_details)}
+
+        Your task is to respond to questions from a coder who is trying to solve your issue. Follow these rules:
+        1. If the coder asks a question that is directly related to the hidden details, provide that information.
+        2. If the question is not related to the hidden details, respond based on the original issue description.
+        3. If you're unsure whether to reveal information, err on the side of caution and don't reveal it.
+        4. Always stay in character as a user reporting an issue, not as an AI assistant.
+        5. Keep your responses concise and to the point.
+
+        Respond with "I don't have that information" if the question is unrelated or you're unsure.
+        """
+        self.chat_history = [{'role': 'system', 'content': self.system_message}]
+
+    def generate_reply(self, question):
+        self.chat_history.append({'role': 'user', 'content': question})
+
+        response = client.chat.completions.create(
+            model='neulab/claude-3-5-sonnet-20240620', messages=self.chat_history
+        )
+
+        reply = response.choices[0].message.content
+        self.chat_history.append({'role': 'assistant', 'content': reply})
+
+        return reply
+
 
 USE_HINT_TEXT = os.environ.get('USE_HINT_TEXT', 'false').lower() == 'true'
 USE_INSTANCE_IMAGE = os.environ.get('USE_INSTANCE_IMAGE', 'false').lower() == 'true'
 
 AGENT_CLS_TO_FAKE_USER_RESPONSE_FN = {
-    'CodeActAgent': codeact_user_response,
-    'CodeActSWEAgent': codeact_user_response,
+    'CodeActAgent': lambda state: fake_user_response(state),
+    'CodeActSWEAgent': lambda state: fake_user_response(state),
 }
+
+
+def fake_user_response(state: State) -> str:
+    last_agent_message = None
+    events = list(state.history.get_events())
+    for event in reversed(events):
+        if isinstance(event, MessageAction) and event.source == 'agent':
+            last_agent_message = event.content
+            break
+
+    if last_agent_message:
+        return fake_user.generate_reply(last_agent_message)
+    else:
+        return 'Please continue working on the task.'
+
 
 AGENT_CLS_TO_INST_SUFFIX = {
     'CodeActAgent': 'When you think you have fixed the issue through code changes, please run the following command: <execute_bash> exit </execute_bash>.\n',
@@ -48,7 +102,8 @@ AGENT_CLS_TO_INST_SUFFIX = {
 
 
 def _get_swebench_workspace_dir_name(instance: pd.Series) -> str:
-    return f'{instance.repo}__{instance.version}'.replace('/', '__')
+    repo_name = instance.repo.split('/')[0]  # Get only the first part of the repo name
+    return repo_name.replace('/', '__')
 
 
 def get_instruction(instance: pd.Series, metadata: EvalMetadata):
@@ -69,7 +124,7 @@ def get_instruction(instance: pd.Series, metadata: EvalMetadata):
     else:
         # Testing general agents
         instruction = (
-            f'Please fix the following issue for the repository in /workspace/{workspace_dir_name}.\n'
+            f'Please fix the following issue for the repository in /workspace/.\n'
             'Environment has been set up for you to start working. You may assume all necessary tools are installed.\n\n'
             '# Problem Statement\n'
             f'{instance.problem_statement}\n\n'
@@ -77,7 +132,7 @@ def get_instruction(instance: pd.Series, metadata: EvalMetadata):
         if USE_HINT_TEXT and instance.hints_text:
             instruction += f'# Hints\n{instance.hints_text}\n\n'
         instruction += (
-            'IMPORTANT: You should ONLY interact with the environment provided to you AND NEVER ASK FOR HUMAN HELP.\n'
+            'Ensure you have all the details you require to solve the issue. You can interact with me to ask for clarifications or additional information using questions without code which you feel would be helpful in solving the issue anytime over the course of the conversation.\n'
             'You should NOT modify any existing test case files. If needed, you can add new test cases in a NEW file to reproduce the issue.\n'
             'You SHOULD INCLUDE PROPER INDENTATION in your edit commands.\n'
         )
@@ -107,7 +162,11 @@ def get_config(
     SWE_BENCH_CONTAINER_IMAGE = 'ghcr.io/opendevin/eval-swe-bench:full-v1.2.1'
     if USE_INSTANCE_IMAGE:
         # We use a different instance image for the each instance of swe-bench eval
-        base_container_image = get_instance_docker_image(instance['instance_id'])
+        search_key = instance['instance_id']
+        json_file_path = 'evaluation/swe_bench/data/mappings.json'
+        with open(json_file_path, 'r') as file:
+            data = json.load(file)
+        base_container_image = data[search_key]
         logger.info(
             f'Using instance container image: {base_container_image}. '
             f'Please make sure this image exists. '
@@ -161,14 +220,22 @@ def initialize_runtime(
     logger.info(action, extra={'msg_type': 'ACTION'})
     obs = runtime.run_action(action)
     logger.info(obs, extra={'msg_type': 'OBSERVATION'})
-    assert obs.exit_code == 0
+    if obs.exit_code != 0:
+        logger.error(f'Command failed with exit code {obs.exit_code}: {obs.content}')
+        # Handle the error appropriately, maybe by raising a custom exception
+        raise RuntimeError(f'Failed to initialize runtime: {obs.content}')
+    # assert obs.exit_code == 0
 
     action = CmdRunAction(command="""export USER=$(whoami); echo USER=${USER} """)
     action.timeout = 600
     logger.info(action, extra={'msg_type': 'ACTION'})
     obs = runtime.run_action(action)
     logger.info(obs, extra={'msg_type': 'OBSERVATION'})
-    assert obs.exit_code == 0
+    if obs.exit_code != 0:
+        logger.error(f'Command failed with exit code {obs.exit_code}: {obs.content}')
+        # Handle the error appropriately, maybe by raising a custom exception
+        raise RuntimeError(f'Failed to initialize runtime: {obs.content}')
+    #    assert obs.exit_code == 0
 
     if USE_INSTANCE_IMAGE:
         # inject the init script
@@ -238,6 +305,10 @@ def initialize_runtime(
     logger.info(action, extra={'msg_type': 'ACTION'})
     obs = runtime.run_action(action)
     logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+    if obs.exit_code != 0:
+        logger.error(f'Command failed with exit code {obs.exit_code}: {obs.content}')
+        # Handle the error appropriately, maybe by raising a custom exception
+        raise RuntimeError(f'Failed to initialize runtime: {obs.content}')
     assert obs.exit_code == 0
 
     action = CmdRunAction(command='git reset --hard')
@@ -335,7 +406,19 @@ def process_instance(
     reset_logger: bool = True,
 ) -> EvalOutput:
     config = get_config(instance, metadata)
-
+    global fake_user
+    # df = pd.read_csv("data/fake_user_issues_under_0.csv")
+    # issue = df.loc[df['instance_id'] == instance["instance_id"], 'issue'].iloc[0]
+    # hidden_details_merged = df.loc[df['instance_id'] == instance["instance_id"], 'hidden_details'].iloc[0]
+    original_issue = instance.original_issue
+    hidden_details_merged = instance.hidden_details
+    print(f"""
+    These are the hidden_details: {hidden_details_merged}
+    """)
+    logger.info(f'These are the hidden_details: {hidden_details_merged}')
+    delimiter = '|||'
+    hidden_details_split = hidden_details_merged.split(delimiter)
+    fake_user = FakeUser(issue=original_issue, hidden_details=hidden_details_split)
     # Setup the logger properly, so you can run multi-processing to parallelize the evaluation
     if reset_logger:
         log_dir = os.path.join(metadata.eval_output_dir, 'infer_logs')
@@ -428,6 +511,12 @@ if __name__ == '__main__':
         help='data set to evaluate on, either full-test or lite-test',
     )
     parser.add_argument(
+        '--csv_file',
+        type=str,
+        default='evaluation/swe_bench/data/transformed_verified_underspecified_0.csv',
+        help='Path to the CSV file containing the dataset',
+    )
+    parser.add_argument(
         '--split',
         type=str,
         default='test',
@@ -437,9 +526,11 @@ if __name__ == '__main__':
 
     # NOTE: It is preferable to load datasets from huggingface datasets and perform post-processing
     # so we don't need to manage file uploading to OpenHands's repo
-    dataset = load_dataset(args.dataset, split=args.split)
-    logger.info(f'Loaded dataset {args.dataset} with split {args.split}')
-    swe_bench_tests = filter_dataset(dataset.to_pandas(), 'instance_id')
+    #    dataset = load_dataset(args.dataset, split=args.split)
+    csv_filepath = args.csv_file
+    dataset = pd.read_csv(csv_filepath)
+    logger.info(f'Loaded dataset from {csv_filepath}')
+    swe_bench_tests = filter_dataset(dataset, 'instance_id')
 
     llm_config = None
     if args.llm_config:

@@ -602,12 +602,16 @@ def _edit_file_impl(
 
     except FileNotFoundError as e:
         ret_str += f'File not found: {e}\n'
+        raise e
     except PermissionError as e:
         ret_str += f'Permission error during file operation: {str(e)}\n'
+        raise e
     except IOError as e:
         ret_str += f'An error occurred while handling the file: {e}\n'
+        raise e
     except ValueError as e:
         ret_str += f'Invalid input: {e}\n'
+        raise e
     except Exception as e:
         # Clean up the temporary file if an error occurs
         if temp_file_path and os.path.exists(temp_file_path):
