@@ -27,9 +27,8 @@ from openhands.core.config import (
 )
 from openhands.core.logger import openhands_logger as logger
 from openhands.core.main import create_runtime, run_controller
-from openhands.events.action import CmdRunAction, MessageAction
+from openhands.events.action import CmdRunAction
 from openhands.events.observation import CmdOutputObservation, ErrorObservation
-from openhands.events.serialization.event import event_to_dict
 from openhands.runtime.runtime import Runtime
 from openhands.runtime.utils.shutdown_listener import sleep_if_should_continue
 
@@ -83,17 +82,17 @@ AGENT_CLS_TO_FAKE_USER_RESPONSE_FN = {
 
 
 def fake_user_response(state: State) -> str:
-    last_agent_message = None
-    events = list(state.history.get_events())
-    for event in reversed(events):
-        if isinstance(event, MessageAction) and event.source == 'agent':
-            last_agent_message = event.content
-            break
+    #    last_agent_message = None
+    #    events = list(state.history.get_events())
+    #    for event in reversed(events):
+    #        if isinstance(event, MessageAction) and event.source == 'agent':
+    #            last_agent_message = event.content
+    #            break
 
-    if last_agent_message:
-        return fake_user.generate_reply(last_agent_message)
-    else:
-        return 'Please continue working on the task.'
+    #    if last_agent_message:
+    #        return fake_user.generate_reply(last_agent_message)
+    #    else:
+    return 'Please continue working on the task.'
 
 
 AGENT_CLS_TO_INST_SUFFIX = {
@@ -133,7 +132,7 @@ def get_instruction(instance: pd.Series, metadata: EvalMetadata):
         if USE_HINT_TEXT and instance.hints_text:
             instruction += f'# Hints\n{instance.hints_text}\n\n'
         instruction += (
-            'Ensure you have all the details you require to solve the issue. You can interact with me to ask for clarifications or additional information using questions without code which you feel would be helpful in solving the issue anytime over the course of the conversation.\n'
+            'IMPORTANT: You should ONLY interact with the environment provided to you AND NEVER ASK FOR HUMAN HELP.\n'
             'You should NOT modify any existing test case files. If needed, you can add new test cases in a NEW file to reproduce the issue.\n'
             'You SHOULD INCLUDE PROPER INDENTATION in your edit commands.\n'
         )
@@ -190,7 +189,6 @@ def get_config(
             # large enough timeout, since some testcases take very long to run
             timeout=300,
             api_key=os.environ.get('ALLHANDS_API_KEY', None),
-            remote_runtime_api_url=os.environ.get('SANDBOX_REMOTE_RUNTIME_API_URL'),
         ),
         # do not mount workspace
         workspace_base=None,
@@ -412,15 +410,7 @@ def process_instance(
     # df = pd.read_csv("data/fake_user_issues_under_0.csv")
     # issue = df.loc[df['instance_id'] == instance["instance_id"], 'issue'].iloc[0]
     # hidden_details_merged = df.loc[df['instance_id'] == instance["instance_id"], 'hidden_details'].iloc[0]
-    original_issue = instance.original_issue
-    hidden_details_merged = instance.hidden_details
-    print(f"""
-    These are the hidden_details: {hidden_details_merged}
-    """)
-    logger.info(f'These are the hidden_details: {hidden_details_merged}')
-    delimiter = '|||'
-    hidden_details_split = hidden_details_merged.split(delimiter)
-    fake_user = FakeUser(issue=original_issue, hidden_details=hidden_details_split)
+    # fake_user = FakeUser(issue=original_issue, hidden_details=hidden_details_split)
     # Setup the logger properly, so you can run multi-processing to parallelize the evaluation
     if reset_logger:
         log_dir = os.path.join(metadata.eval_output_dir, 'infer_logs')
@@ -468,7 +458,10 @@ def process_instance(
     if state is None:
         raise ValueError('State should not be None.')
 
-    histories = [event_to_dict(event) for event in state.history.get_events()]
+    # history is now available as a stream of events, rather than list of pairs of (Action, Observation)
+    # for compatibility with the existing output format, we can remake the pairs here
+    # remove when it becomes unnecessary
+    histories = state.history.compatibility_for_eval_history_pairs()
     metrics = state.metrics.get() if state.metrics else None
 
     # Save the output
@@ -480,7 +473,6 @@ def process_instance(
         metadata=metadata,
         history=histories,
         metrics=metrics,
-        llm_completions=state.extra_data.get('llm_completions', []),
         error=state.last_error if state and state.last_error else None,
     )
     return output
