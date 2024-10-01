@@ -5,7 +5,6 @@ from agenthub.codeact_agent.action_parser import CodeActResponseParser
 from openhands.controller.agent import Agent
 from openhands.controller.state.state import State
 from openhands.core.config import AgentConfig
-from openhands.core.logger import openhands_logger as logger
 from openhands.core.message import ImageContent, Message, TextContent
 from openhands.events.action import (
     Action,
@@ -203,22 +202,9 @@ class CodeActAgent(Agent):
                 '</execute_bash>',
                 '</execute_browse>',
             ],
-            'temperature': 0.0,
         }
 
-        if self.llm.is_caching_prompt_active():
-            params['extra_headers'] = {
-                'anthropic-beta': 'prompt-caching-2024-07-31',
-            }
-
-        try:
-            response = self.llm.completion(**params)
-        except Exception as e:
-            logger.error(f'{e}')
-            error_message = '{}: {}'.format(type(e).__name__, str(e).split('\n')[0])
-            return AgentFinishAction(
-                thought=f'Agent encountered an error while processing the last action.\nError: {error_message}\nPlease try again.'
-            )
+        response = self.llm.completion(**params)
 
         return self.action_parser.parse(response)
 

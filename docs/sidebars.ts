@@ -23,11 +23,6 @@ const sidebars: SidebarsConfig = {
           items: [
             {
               type: 'doc',
-              label: 'OpenAI',
-              id: 'usage/llms/openai-llms',
-            },
-            {
-              type: 'doc',
               label: 'Azure',
               id: 'usage/llms/azure-llms',
             },
@@ -43,9 +38,14 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
-              label: 'Local/ollama',
-              id: 'usage/llms/local-llms',
-            }
+              label: 'OpenAI',
+              id: 'usage/llms/openai-llms',
+            },
+            {
+              type: 'doc',
+              label: 'OpenRouter',
+              id: 'usage/llms/openrouter',
+            },
           ],
         },
       ],
@@ -83,6 +83,10 @@ const sidebars: SidebarsConfig = {
         {
           type: 'doc',
           id: 'usage/how-to/openshift-example',
+        },
+        {
+          type: 'doc',
+          id: 'usage/how-to/debugging',
         }
       ]
     },

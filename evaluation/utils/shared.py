@@ -6,7 +6,6 @@ import pathlib
 import subprocess
 import time
 import traceback
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import Any, Awaitable, Callable, TextIO
 
 import pandas as pd
@@ -38,9 +37,9 @@ class EvalMetadata(BaseModel):
     def model_dump_json(self, *args, **kwargs):
         dumped = super().model_dump_json(*args, **kwargs)
         dumped_dict = json.loads(dumped)
-        logger.debug(f'Dumped metadata: {dumped_dict}')
         # avoid leaking sensitive information
         dumped_dict['llm_config'] = self.llm_config.to_safe_dict()
+        logger.debug(f'Dumped metadata: {dumped_dict}')
         return json.dumps(dumped_dict)
 
 
@@ -55,7 +54,11 @@ class EvalOutput(BaseModel):
 
     # Interaction info
     metadata: EvalMetadata | None = None
-    history: list[tuple[dict[str, Any], dict[str, Any]]] | None = None
+    # list[tuple[dict[str, Any], dict[str, Any]]] - for compatibility with the old format
+    history: (
+        list[dict[str, Any]] | list[tuple[dict[str, Any], dict[str, Any]]] | None
+    ) = None
+    llm_completions: list[dict[str, Any]]
     metrics: dict[str, Any] | None = None
     error: str | None = None
 
@@ -318,6 +321,7 @@ def _process_instance_wrapper(
                     + '-' * 10
                 )
                 # Raise an error after all retries & stop the evaluation
+                logger.exception(e)
                 raise RuntimeError(
                     f'Maximum error retries reached for instance {instance.instance_id}'
                 ) from e
@@ -335,6 +339,11 @@ def _process_instance_wrapper(
             if use_mp:
                 print(msg)  # use print to directly print to console
             time.sleep(5)
+
+
+def _process_instance_wrapper_mp(args):
+    """Wrapper for multiprocessing, especially for imap_unordered."""
+    return _process_instance_wrapper(*args)
 
 
 def run_evaluation(
@@ -363,20 +372,13 @@ def run_evaluation(
 
     try:
         if use_multiprocessing:
-            with ProcessPoolExecutor(num_workers) as executor:
-                futures = [
-                    executor.submit(
-                        _process_instance_wrapper,
-                        process_instance_func=process_instance_func,
-                        instance=instance,
-                        metadata=metadata,
-                        use_mp=True,
-                        max_retries=max_retries,
-                    )
+            with mp.Pool(num_workers) as pool:
+                args_iter = (
+                    (process_instance_func, instance, metadata, True, max_retries)
                     for _, instance in dataset.iterrows()
-                ]
-                for future in as_completed(futures):
-                    result = future.result()
+                )
+                results = pool.imap_unordered(_process_instance_wrapper_mp, args_iter)
+                for result in results:
                     update_progress(result, pbar, output_fp)
         else:
             for _, instance in dataset.iterrows():
@@ -413,18 +415,27 @@ def reset_logger_for_multiprocessing(
     # Remove all existing handlers from logger
     for handler in logger.handlers[:]:
         logger.removeHandler(handler)
-    # add back the console handler to print ONE line
-    logger.addHandler(get_console_handler())
+
+    # add console handler to print ONE line
+    console_handler = get_console_handler(log_level=logging.INFO)
+    console_handler.setFormatter(
+        logging.Formatter(
+            f'Instance {instance_id} - ' + '%(asctime)s - %(levelname)s - %(message)s'
+        )
+    )
+    logger.addHandler(console_handler)
     logger.info(
         f'Starting evaluation for instance {instance_id}.\n'
         f'Hint: run "tail -f {log_file}" to see live logs in a separate shell'
     )
-    # Remove all existing handlers from logger
-    for handler in logger.handlers[:]:
-        logger.removeHandler(handler)
+    # Only log WARNING or higher to console
+    console_handler.setLevel(logging.WARNING)
+
+    # Log INFO and above to file
     os.makedirs(os.path.dirname(log_file), exist_ok=True)
     file_handler = logging.FileHandler(log_file)
     file_handler.setFormatter(
         logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     )
+    file_handler.setLevel(logging.INFO)
     logger.addHandler(file_handler)
