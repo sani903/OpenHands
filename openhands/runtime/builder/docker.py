@@ -58,7 +58,10 @@ class DockerRuntimeBuilder(RuntimeBuilder):
         target_image_hash_name = tags[0]
         target_image_repo, target_image_hash_tag = target_image_hash_name.split(':')
         target_image_tag = tags[1].split(':')[1] if len(tags) > 1 else None
-
+        print(f'hash_name: {target_image_hash_name}')
+        print(f'OH version: {oh_version}')
+        print(f'date: {datetime.datetime.now().isoformat()}')
+        print(f'path: {path}')
         # Check if the image exists and pull if necessary
         self.image_exists(target_image_repo)
 
@@ -186,9 +189,7 @@ class DockerRuntimeBuilder(RuntimeBuilder):
             return True
         except docker.errors.ImageNotFound:
             if not pull_from_repo:
-                logger.debug(
-                    f'Image {image_name} not found locally'
-                )
+                logger.debug(f'Image {image_name} not found locally')
                 return False
             try:
                 logger.debug(

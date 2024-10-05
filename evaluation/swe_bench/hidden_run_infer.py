@@ -472,6 +472,7 @@ def process_instance(
         test_result=test_result,
         metadata=metadata,
         history=histories,
+        llm_completions=state.extra_data.get('llm_completions', []),
         metrics=metrics,
         error=state.last_error if state and state.last_error else None,
     )
