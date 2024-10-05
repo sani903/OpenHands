@@ -13,7 +13,7 @@ def evaluate_files():
     for root, _, files in os.walk(output_dir):
         for file in files:
             print(file)
-            if file.endswith('output.jsonl'):
+            if file.startswith('hidden') and file.endswith('output.jsonl'):
                 file_path = os.path.join(root, file)
                 print(f'Evaluating file: {file_path}')
 

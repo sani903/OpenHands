@@ -1,4 +1,3 @@
-import os
 import shutil
 import subprocess
 
@@ -12,17 +11,50 @@ config_file = 'evaluation/swe_bench/config.toml'
 output_file = 'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/Meta-Llama-3.1-70B-Instruct_maxiter_30_N_v1.9-no-hint/output.jsonl'
 # skip = True
 # Read the input file line by line
+
+
+def remove_docker_images():
+    # Command to list docker images
+    list_command = (
+        "docker images ghcr.io/all-hands-ai/runtime --format '{{.Repository}}:{{.Tag}}'"
+    )
+
+    try:
+        # Execute the list command and capture the output
+        result = subprocess.run(
+            list_command, shell=True, check=True, capture_output=True, text=True
+        )
+        image_list = result.stdout.strip().split('\n')
+
+        # If there are images to remove
+        if image_list and image_list[0]:
+            # Command to remove the images
+            remove_command = f"docker rmi {' '.join(image_list)}"
+
+            # Execute the remove command
+            subprocess.run(remove_command, shell=True, check=True)
+            print(f'Successfully removed {len(image_list)} images.')
+        else:
+            print('No images found to remove.')
+
+    except subprocess.CalledProcessError as e:
+        print(f'An error occurred: {e}')
+    except Exception as e:
+        print(f'An unexpected error occurred: {e}')
+
+
 counter = 0
 with open(input_file, 'r') as f:
     for line in f:
         #        counter+=1
         # Remove any leading/trailing whitespace
+        #        remove_docker_images()
         new_string = line.strip()
-        file_path = os.path.join('directory_path', 'filename.txt')
-        new_output_file = f'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/Meta-Llama-3.1-70B-Instruct_maxiter_30_N_v1.9-no-hint/interact_{new_string}_output.jsonl'
-        if os.path.exists(new_output_file):
-            print(new_string)
-            continue
+        new_output_file = f'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/Meta-Llama-3.1-70B-Instruct_maxiter_30_N_v1.9-no-hint/retest_{new_string}_output.jsonl'
+
+        # if os.path.exists(new_output_file):
+        #     print(new_string)
+        #     continue
         #       if skip:
         #          continue
         #        if 'matplotlib' in new_string or 'pytest' in new_string or 'sphinx' in new_string or 'scikit-learn' in new_string:
@@ -37,7 +69,10 @@ with open(input_file, 'r') as f:
         try:
             # Run the evaluation command
             subprocess.run(
-                ['./evaluation/swe_bench/scripts/run_infer.sh', 'llm.llama-3-1'],
+                [
+                    './evaluation/swe_bench/scripts/run_infer.sh',
+                    'llm.claude-sonnet-3-5',
+                ],
                 check=True,
             )
         except subprocess.CalledProcessError as e:

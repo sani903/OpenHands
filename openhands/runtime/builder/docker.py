@@ -63,7 +63,7 @@ class DockerRuntimeBuilder(RuntimeBuilder):
         print(f'date: {datetime.datetime.now().isoformat()}')
         print(f'path: {path}')
         # Check if the image exists and pull if necessary
-        self.image_exists(target_image_repo)
+        self.image_exists(target_image_hash_name)
 
         buildx_cmd = [
             'docker',
@@ -116,8 +116,8 @@ class DockerRuntimeBuilder(RuntimeBuilder):
                 raise subprocess.CalledProcessError(
                     return_code,
                     process.args,
-                    output=None,
-                    stderr=None,
+                    output=process.stdout.read() if process.stdout else None,
+                    stderr=process.stderr.read() if process.stderr else None,
                 )
 
         except subprocess.CalledProcessError as e:
@@ -198,8 +198,15 @@ class DockerRuntimeBuilder(RuntimeBuilder):
 
                 layers: dict[str, dict[str, str]] = {}
                 previous_layer_count = 0
+
+                if ':' in image_name:
+                    image_repo, image_tag = image_name.split(':', 1)
+                else:
+                    image_repo = image_name
+                    image_tag = None
+
                 for line in self.docker_client.api.pull(
-                    image_name, stream=True, decode=True
+                    image_repo, tag=image_tag, stream=True, decode=True
                 ):
                     self._output_build_progress(line, layers, previous_layer_count)
                     previous_layer_count = len(layers)

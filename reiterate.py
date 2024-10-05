@@ -24,7 +24,7 @@ def process_file(file_path):
 
 # Main processing loop
 for filename in os.listdir(directory_path):
-    if filename.startswith('hidden') and filename.endswith('.jsonl'):
+    if filename.startswith('interact') and filename.endswith('.jsonl'):
         file_path = os.path.join(directory_path, filename)
         instance_id = process_file(file_path)
 
@@ -49,7 +49,7 @@ for filename in os.listdir(directory_path):
                 continue
 
             # Rename output file
-            new_output_file = f'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/Meta-Llama-3.1-70B-Instruct_maxiter_30_N_v1.9-no-hint/hidden_{instance_id}_output.jsonl'
+            new_output_file = f'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/Meta-Llama-3.1-70B-Instruct_maxiter_30_N_v1.9-no-hint/interact_{instance_id}_output.jsonl'
             #   if not os.path.exists(new_output_file):
             shutil.move(output_file, new_output_file)
             print(f'Processed: {instance_id}')
