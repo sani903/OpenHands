@@ -59,6 +59,7 @@ class FakeUser:
         Respond with "I don't have that information" if the question is unrelated or you're unsure.
         """
         self.chat_history = [{'role': 'system', 'content': self.system_message}]
+        self.turns = 0
 
     def generate_reply(self, question):
         self.chat_history.append({'role': 'user', 'content': question})
@@ -66,7 +67,8 @@ class FakeUser:
         response = client.chat.completions.create(
             model='neulab/claude-3-5-sonnet-20240620', messages=self.chat_history
         )
-
+        self.turns += 1
+        print('HEREEEEE')
         reply = response.choices[0].message.content
         self.chat_history.append({'role': 'assistant', 'content': reply})
 
@@ -77,21 +79,27 @@ USE_HINT_TEXT = os.environ.get('USE_HINT_TEXT', 'false').lower() == 'true'
 USE_INSTANCE_IMAGE = os.environ.get('USE_INSTANCE_IMAGE', 'false').lower() == 'true'
 
 AGENT_CLS_TO_FAKE_USER_RESPONSE_FN = {
-    'CodeActAgent': lambda state: fake_user_response(state),
-    'CodeActSWEAgent': lambda state: fake_user_response(state),
+    'CodeActAgent': lambda state, metadata: fake_user_response(state, metadata),
+    'CodeActSWEAgent': lambda state, metadata: fake_user_response(state, metadata),
 }
 
 
-def fake_user_response(state: State) -> str:
+def fake_user_response(state: State, metadata: EvalMetadata) -> str:
     last_agent_message = None
+    global fake_user
     events = list(state.history.get_events())
     for event in reversed(events):
         if isinstance(event, MessageAction) and event.source == 'agent':
             last_agent_message = event.content
             break
-
     if last_agent_message:
-        return fake_user.generate_reply(last_agent_message)
+        response = fake_user.generate_reply(last_agent_message)
+        if fake_user.turns > 0:
+            # Save the interaction result
+            with open(os.path.join(metadata.eval_output_dir, 'question.txt'), 'w') as f:
+                f.write(f'{state.instance_id}: 1\n')
+            return '/exit'
+        return response
     else:
         return 'Please continue working on the task.'
 
@@ -133,7 +141,7 @@ def get_instruction(instance: pd.Series, metadata: EvalMetadata):
         if USE_HINT_TEXT and instance.hints_text:
             instruction += f'# Hints\n{instance.hints_text}\n\n'
         instruction += (
-            'I have not provided all the necessary details about the issue and I have some hidden details that are helpful. Please ask me specifc questions using non-code commands to gather the relevant information that I have to help you solve the issue. Ensure you have all the details you require to solve the issue.\n'
+            'Ensure you have all the details you require to solve the issue.  Please feel free to ask targeted questions if you encounter any ambiguities or missing information that would help clarify the problem. You should aim to gather the essential details to solve the issue efficiently.\n'
             'You should NOT modify any existing test case files. If needed, you can add new test cases in a NEW file to reproduce the issue.\n'
             'You SHOULD INCLUDE PROPER INDENTATION in your edit commands.\n'
         )
@@ -292,6 +300,7 @@ def initialize_runtime(
         obs = runtime.run_action(action)
         logger.info(obs, extra={'msg_type': 'OBSERVATION'})
         assert obs.exit_code == 0
+
     else:
         action = CmdRunAction(command='source /swe_util/swe_entry.sh')
         action.timeout = 1800
@@ -430,7 +439,8 @@ def process_instance(
 
     runtime = create_runtime(config, sid=instance.instance_id)
     initialize_runtime(runtime, instance)
-
+    with open(os.path.join(metadata.eval_output_dir, 'question.txt'), 'a') as f:
+        f.write(f'{instance.instance_id}: 0\n')
     instruction = get_instruction(instance, metadata)
 
     # Here's how you can run the agent (similar to the `main` function) and get the final task state
@@ -439,9 +449,9 @@ def process_instance(
             config=config,
             task_str=instruction,
             runtime=runtime,
-            fake_user_response_fn=AGENT_CLS_TO_FAKE_USER_RESPONSE_FN[
+            fake_user_response_fn=lambda s: AGENT_CLS_TO_FAKE_USER_RESPONSE_FN[
                 metadata.agent_class
-            ],
+            ](s, metadata),
         )
     )
 
