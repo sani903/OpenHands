@@ -9,7 +9,7 @@ import openai
 import pandas as pd
 import toml
 
-import agenthub
+import openhands.agenthub
 from evaluation.swe_bench.prompt import CODEACT_SWE_PROMPT
 from evaluation.utils.shared import (
     EvalMetadata,
@@ -112,8 +112,7 @@ AGENT_CLS_TO_INST_SUFFIX = {
 
 
 def _get_swebench_workspace_dir_name(instance: pd.Series) -> str:
-    repo_name = instance.repo.split('/')[0]  # Get only the first part of the repo name
-    return repo_name.replace('/', '__')
+    return f'{instance.repo}__{instance.version}'.replace('/', '__')
 
 
 def get_instruction(instance: pd.Series, metadata: EvalMetadata):
@@ -142,7 +141,7 @@ def get_instruction(instance: pd.Series, metadata: EvalMetadata):
     else:
         # Testing general agents
         instruction = (
-            f'Please fix the following issue for the repository in /workspace/.\n'
+            f'Please fix the following issue for the repository in /workspace/{workspace_dir_name}.\n'
             'Environment has been set up for you to start working. You may assume all necessary tools are installed.\n\n'
             '# Problem Statement\n'
             f'{issue}\n\n'
@@ -208,6 +207,7 @@ def get_config(
             timeout=300,
             api_key=os.environ.get('ALLHANDS_API_KEY', None),
             remote_runtime_api_url=os.environ.get('SANDBOX_REMOTE_RUNTIME_API_URL'),
+            keep_remote_runtime_alive=False,
         ),
         # do not mount workspace
         workspace_base=None,
@@ -445,34 +445,34 @@ def process_instance(
         reset_logger_for_multiprocessing(logger, instance.instance_id, log_dir)
     else:
         logger.info(f'Starting evaluation for instance {instance.instance_id}.')
+    runtime = create_runtime(config)
 
-    runtime = create_runtime(config, sid=instance.instance_id)
-    initialize_runtime(runtime, instance)
-    with open(os.path.join(metadata.eval_output_dir, 'question.txt'), 'a') as f:
-        f.write('0\n')
-    instruction = get_instruction(instance, metadata)
+    try:
+        initialize_runtime(runtime, instance)
 
-    # Here's how you can run the agent (similar to the `main` function) and get the final task state
-    state: State | None = asyncio.run(
-        run_controller(
-            config=config,
-            task_str=instruction,
-            runtime=runtime,
-            fake_user_response_fn=lambda s: AGENT_CLS_TO_FAKE_USER_RESPONSE_FN[
-                metadata.agent_class
-            ](s, metadata),
+        instruction = get_instruction(instance, metadata)
+
+        # Here's how you can run the agent (similar to the `main` function) and get the final task state
+        state: State | None = asyncio.run(
+            run_controller(
+                config=config,
+                initial_user_action=MessageAction(content=instruction),
+                runtime=runtime,
+                fake_user_response_fn=AGENT_CLS_TO_FAKE_USER_RESPONSE_FN[
+                    metadata.agent_class
+                ],
+            )
         )
-    )
 
-    # ======= THIS IS SWE-Bench specific =======
-    # Get git patch
-    return_val = complete_runtime(runtime, instance)
-    git_patch = return_val['git_patch']
-    logger.info(
-        f'Got git diff for instance {instance.instance_id}:\n--------\n{git_patch}\n--------'
-    )
-
-    runtime.close()
+        # ======= THIS IS SWE-Bench specific =======
+        # Get git patch
+        return_val = complete_runtime(runtime, instance)
+        git_patch = return_val['git_patch']
+        logger.info(
+            f'Got git diff for instance {instance.instance_id}:\n--------\n{git_patch}\n--------'
+        )
+    finally:
+        runtime.close()
     # ==========================================
 
     # ======= Attempt to evaluate the agent's edits =======
@@ -559,7 +559,7 @@ if __name__ == '__main__':
         raise ValueError(f'Could not find LLM config: --llm_config {args.llm_config}')
 
     details = {}
-    _agent_cls = agenthub.Agent.get_cls(args.agent_cls)
+    _agent_cls = openhands.agenthub.Agent.get_cls(args.agent_cls)
     if hasattr(_agent_cls, 'system_message'):
         details['system_message'] = _agent_cls.system_message
     if hasattr(_agent_cls, 'in_context_example'):
