@@ -2,7 +2,7 @@ import os
 import subprocess
 
 # Directory containing the .jsonl files
-output_dir = 'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/Meta-Llama-3.1-70B-Instruct_maxiter_30_N_v1.9-no-hint/'
+output_dir = 'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/claude-3-5-sonnet-20240620_maxiter_30_N_v1.9-no-hint/'
 # Evaluation script path
 eval_script = './evaluation/swe_bench/scripts/eval_infer.sh'
 
@@ -13,7 +13,7 @@ def evaluate_files():
     for root, _, files in os.walk(output_dir):
         for file in files:
             print(file)
-            if file.startswith('hidden') and file.endswith('output.jsonl'):
+            if file.startswith('ablation') and file.endswith('output.jsonl'):
                 file_path = os.path.join(root, file)
                 print(f'Evaluating file: {file_path}')
 

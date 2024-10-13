@@ -1,7 +1,6 @@
 import asyncio
 import json
 import os
-import random
 import tempfile
 from typing import Any
 
@@ -47,20 +46,15 @@ class FakeUser:
 
         Issue: {issue}
 
-        Hidden details (only reveal if specifically asked):
-        {' '.join(hidden_details)}
-
         Your task is to respond to questions from a coder who is trying to solve your issue. Follow these rules:
-        1. If the coder asks a question that is directly related to the hidden details, provide that information.
-        2. If the question is not related to the hidden details, respond based on the original issue description.
-        3. If you're unsure whether to reveal information, err on the side of caution and don't reveal it.
-        4. Always stay in character as a user reporting an issue, not as an AI assistant.
-        5. Keep your responses concise and to the point.
+        1. If the coder asks a question related to information that you have, respond to that question based on the issue description.
+        2. If the question is outside the scope of the information you already have do not attempt to find that information.
+        3. Always stay in character as a user reporting an issue, not as an AI assistant.
+        4. Keep your responses concise and to the point.
 
-        Respond with "I don't have that information" if the question is unrelated or you're unsure.
+        Respond with "I don't have that information" if the question is unrelated or you're unsure. Do NOT start assisting the coder by doing any solving yourself. You must only answer questions based on the issue description you have.
         """
         self.chat_history = [{'role': 'system', 'content': self.system_message}]
-        self.turns = 0
 
     def generate_reply(self, question):
         self.chat_history.append({'role': 'user', 'content': question})
@@ -68,8 +62,7 @@ class FakeUser:
         response = client.chat.completions.create(
             model='neulab/claude-3-5-sonnet-20240620', messages=self.chat_history
         )
-        self.turns += 1
-        print('HEREEEEE')
+
         reply = response.choices[0].message.content
         self.chat_history.append({'role': 'assistant', 'content': reply})
 
@@ -80,27 +73,21 @@ USE_HINT_TEXT = os.environ.get('USE_HINT_TEXT', 'false').lower() == 'true'
 USE_INSTANCE_IMAGE = os.environ.get('USE_INSTANCE_IMAGE', 'false').lower() == 'true'
 
 AGENT_CLS_TO_FAKE_USER_RESPONSE_FN = {
-    'CodeActAgent': lambda state, metadata: fake_user_response(state, metadata),
-    'CodeActSWEAgent': lambda state, metadata: fake_user_response(state, metadata),
+    'CodeActAgent': lambda state: fake_user_response(state),
+    'CodeActSWEAgent': lambda state: fake_user_response(state),
 }
 
 
-def fake_user_response(state: State, metadata: EvalMetadata) -> str:
+def fake_user_response(state: State) -> str:
     last_agent_message = None
-    global fake_user
     events = list(state.history.get_events())
     for event in reversed(events):
         if isinstance(event, MessageAction) and event.source == 'agent':
             last_agent_message = event.content
             break
+
     if last_agent_message:
-        response = fake_user.generate_reply(last_agent_message)
-        if fake_user.turns > 0:
-            # Save the interaction result
-            with open(os.path.join(metadata.eval_output_dir, 'question.txt'), 'w') as f:
-                f.write('1\n')
-            return '/exit'
-        return response
+        return fake_user.generate_reply(last_agent_message)
     else:
         return 'Please continue working on the task.'
 
@@ -119,19 +106,11 @@ def _get_swebench_workspace_dir_name(instance: pd.Series) -> str:
 def get_instruction(instance: pd.Series, metadata: EvalMetadata):
     workspace_dir_name = _get_swebench_workspace_dir_name(instance)
     # Prepare instruction
-    p = random.random()
-    with open(os.path.join(metadata.eval_output_dir, 'test_gold.txt'), 'w') as f:
-        if p < 0.5:
-            f.write(f'{instance.instance_id}: 0\n')
-            issue = instance.original_issue
-        else:
-            f.write(f'{instance.instance_id}: 1\n')
-            issue = instance.problem_statement
     if metadata.agent_class == 'CodeActSWEAgent':
         instruction = (
             'We are currently solving the following issue within our repository. Here is the issue text:\n'
             '--- BEGIN ISSUE ---\n'
-            f'{issue}\n'
+            f'{instance.original_issue}\n'
             '--- END ISSUE ---\n\n'
         )
         if USE_HINT_TEXT and instance.hints_text:
@@ -142,15 +121,15 @@ def get_instruction(instance: pd.Series, metadata: EvalMetadata):
     else:
         # Testing general agents
         instruction = (
-            f'Please fix the following issue for the repository in /workspace/.\n'
+            f'Please fix the following issue for the repository in /workspace/{workspace_dir_name}.\n'
             'Environment has been set up for you to start working. You may assume all necessary tools are installed.\n\n'
             '# Problem Statement\n'
-            f'{issue}\n\n'
+            f'{instance.original_issue}\n\n'
         )
         if USE_HINT_TEXT and instance.hints_text:
             instruction += f'# Hints\n{instance.hints_text}\n\n'
         instruction += (
-            'Ensure you have all the details you require to solve the issue.  Please feel free to ask targeted questions if you encounter any ambiguities or missing information that would help clarify the problem. You should aim to gather the essential details to solve the issue efficiently.\n'
+            'You must first ask me questions about potential clarifications or if you need additional information. Please ask me specifc questions using non-code commands to help you solve the issue.\n'
             'You should NOT modify any existing test case files. If needed, you can add new test cases in a NEW file to reproduce the issue.\n'
             'You SHOULD INCLUDE PROPER INDENTATION in your edit commands.\n'
         )
@@ -309,7 +288,6 @@ def initialize_runtime(
         obs = runtime.run_action(action)
         logger.info(obs, extra={'msg_type': 'OBSERVATION'})
         assert obs.exit_code == 0
-
     else:
         action = CmdRunAction(command='source /swe_util/swe_entry.sh')
         action.timeout = 1800
@@ -448,8 +426,7 @@ def process_instance(
 
     runtime = create_runtime(config, sid=instance.instance_id)
     initialize_runtime(runtime, instance)
-    with open(os.path.join(metadata.eval_output_dir, 'question.txt'), 'a') as f:
-        f.write('0\n')
+
     instruction = get_instruction(instance, metadata)
 
     # Here's how you can run the agent (similar to the `main` function) and get the final task state
@@ -458,9 +435,9 @@ def process_instance(
             config=config,
             task_str=instruction,
             runtime=runtime,
-            fake_user_response_fn=lambda s: AGENT_CLS_TO_FAKE_USER_RESPONSE_FN[
+            fake_user_response_fn=AGENT_CLS_TO_FAKE_USER_RESPONSE_FN[
                 metadata.agent_class
-            ](s, metadata),
+            ],
         )
     )
 
@@ -489,7 +466,7 @@ def process_instance(
 
     histories = [event_to_dict(event) for event in state.history.get_events()]
     metrics = state.metrics.get() if state.metrics else None
-
+    num_turns = sum(1 for _ in state.history.get_events()) if state else 0
     # Save the output
     output = EvalOutput(
         instance_id=instance.instance_id,
@@ -498,9 +475,10 @@ def process_instance(
         test_result=test_result,
         metadata=metadata,
         history=histories,
-        metrics=metrics,
         llm_completions=state.extra_data.get('llm_completions', []),
+        metrics=metrics,
         error=state.last_error if state and state.last_error else None,
+        num_turns=num_turns,
     )
     return output
 

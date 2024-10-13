@@ -125,7 +125,7 @@ def get_instruction(instance: pd.Series, metadata: EvalMetadata):
     else:
         # Testing general agents
         instruction = (
-            f'Please fix the following issue for the repository in /workspace/.\n'
+            f'Please fix the following issue for the repository in /workspace/{workspace_dir_name}.\n'
             'Environment has been set up for you to start working. You may assume all necessary tools are installed.\n\n'
             '# Problem Statement\n'
             f'{instance.problem_statement}\n\n'
@@ -473,6 +473,7 @@ def process_instance(
     histories = state.history.compatibility_for_eval_history_pairs()
     metrics = state.metrics.get() if state.metrics else None
 
+    num_turns = sum(1 for _ in state.history.get_events()) if state else 0
     # Save the output
     output = EvalOutput(
         instance_id=instance.instance_id,
@@ -484,6 +485,7 @@ def process_instance(
         llm_completions=state.extra_data.get('llm_completions', []),
         metrics=metrics,
         error=state.last_error if state and state.last_error else None,
+        num_turns=num_turns,
     )
     return output
 

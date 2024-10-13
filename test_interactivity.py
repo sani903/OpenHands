@@ -1,3 +1,4 @@
+import os
 import shutil
 import subprocess
 
@@ -8,8 +9,9 @@ input_file = 'evaluation/swe_bench/data/subset_ids.txt'
 config_file = 'evaluation/swe_bench/config.toml'
 
 # Path to the output.jsonl file
-output_file = 'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/deepseek-chat_maxiter_30_N_v1.9-no-hint/output.jsonl'
-turns_file = 'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/deepseek-chat_maxiter_30_N_v1.9-no-hint/output_turns.txt'
+gold_file = 'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/claude-3-5-sonnet-20240620_maxiter_4_N_v1.9-no-hint/test_gold.txt'
+questions_file = 'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/claude-3-5-sonnet-20240620_maxiter_4_N_v1.9-no-hint/question.txt'
+output_file = 'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/claude-3-5-sonnet-20240620_maxiter_4_N_v1.9-no-hint/output.jsonl'
 # skip = True
 # Read the input file line by line
 
@@ -47,15 +49,16 @@ def remove_docker_images():
 counter = 0
 with open(input_file, 'r') as f:
     for line in f:
-        #        counter+=1
+        counter += 1
         # Remove any leading/trailing whitespace
         #        remove_docker_images()
         new_string = line.strip()
-        new_output_file = f'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/deepseek-chat_maxiter_30_N_v1.9-no-hint/base_{new_string}_output.jsonl'
-        new_turns_file = f'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/deepseek-chat_maxiter_30_N_v1.9-no-hint/base_{new_string}_turns.txt'
-        # if os.path.exists(new_output_file):
-        #     print(new_string)
-        #     continue
+        new_questions_file = f'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/claude-3-5-sonnet-20240620_maxiter_4_N_v1.9-no-hint/test_{new_string}_questions.txt'
+        new_output_file = f'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/claude-3-5-sonnet-20240620_maxiter_4_N_v1.9-no-hint/test_{new_string}_output.jsonl'
+        new_gold_file = f'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/claude-3-5-sonnet-20240620_maxiter_4_N_v1.9-no-hint/test_{new_string}_gold.txt'
+        if os.path.exists(new_output_file):
+            print(new_string)
+            continue
         #       if skip:
         #          continue
         #        if 'matplotlib' in new_string or 'pytest' in new_string or 'sphinx' in new_string or 'scikit-learn' in new_string:
@@ -71,8 +74,8 @@ with open(input_file, 'r') as f:
             # Run the evaluation command
             subprocess.run(
                 [
-                    './evaluation/swe_bench/scripts/run_infer.sh',
-                    'llm.deepseek-chat',
+                    './evaluation/swe_bench/scripts/test_interactivity.sh',
+                    'llm.claude-sonnet-3-5',
                 ],
                 check=True,
             )
@@ -92,7 +95,8 @@ with open(input_file, 'r') as f:
             continue
         # Rename the output file
         shutil.move(output_file, new_output_file)
-        shutil.move(turns_file, new_turns_file)
+        shutil.move(questions_file, new_questions_file)
+        shutil.move(gold_file, new_gold_file)
         print(f'Processed: {new_string}')
 
 print('Script execution completed.')

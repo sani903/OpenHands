@@ -12,7 +12,7 @@ total_error = 0
 
 # Iterate through all files in the directory
 for filename in os.listdir(directory):
-    if filename.startswith('hidden') and filename.endswith('report.json'):
+    if filename.startswith('ablation') and filename.endswith('report.json'):
         file_path = os.path.join(directory, filename)
 
         # Read the JSON file
@@ -21,6 +21,8 @@ for filename in os.listdir(directory):
 
         # Extract and accumulate the required values
         total_resolved += data.get('resolved_instances', 0)
+        if data.get('resolved_instances', 0) != 0:
+            print(filename)
         total_unresolved += data.get('unresolved_instances', 0)
         total_empty_patch += data.get('empty_patch_instances', 0)
         total_error += data.get('error_instances', 0)

@@ -25,7 +25,7 @@ fi
 
 if [ -z "$MAX_ITER" ]; then
   echo "MAX_ITER not specified, use default 30"
-  MAX_ITER=7
+  MAX_ITER=4
 fi
 
 if [ -z "$USE_INSTANCE_IMAGE" ]; then
@@ -73,7 +73,7 @@ echo "EVAL_NOTE: $EVAL_NOTE"
 
 unset SANDBOX_ENV_GITHUB_TOKEN # prevent the agent from using the github token to push
 
-COMMAND="poetry run python evaluation/swe_bench/run_infer.py \
+COMMAND="poetry run python evaluation/swe_bench/test_interactivity.py \
   --agent-cls $AGENT \
   --llm-config $MODEL_CONFIG \
   --max-iterations $MAX_ITER \

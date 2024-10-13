@@ -52,7 +52,7 @@ class EvalOutput(BaseModel):
     # output of the evaluation
     # store anything that is needed for the score calculation
     test_result: dict[str, Any]
-
+    num_turns: int = 0
     instruction: str | None = None
 
     # Interaction info
@@ -399,27 +399,32 @@ def run_evaluation(
     total_instances = len(dataset)
     pbar = tqdm(total=total_instances, desc='Instances processed')
     output_fp = open(output_file, 'a')
-
+    turn_counts_file = output_file.replace('.jsonl', '_turns.txt')
     try:
-        if use_multiprocessing:
-            with mp.Pool(num_workers) as pool:
-                args_iter = (
-                    (process_instance_func, instance, metadata, True, max_retries)
-                    for _, instance in dataset.iterrows()
-                )
-                results = pool.imap_unordered(_process_instance_wrapper_mp, args_iter)
-                for result in results:
+        with open(turn_counts_file, 'w') as turn_file:
+            if use_multiprocessing:
+                with mp.Pool(num_workers) as pool:
+                    args_iter = (
+                        (process_instance_func, instance, metadata, True, max_retries)
+                        for _, instance in dataset.iterrows()
+                    )
+                    results = pool.imap_unordered(
+                        _process_instance_wrapper_mp, args_iter
+                    )
+                    for result in results:
+                        update_progress(result, pbar, output_fp)
+                        turn_file.write(f'{result.instance_id}: {result.num_turns}\n')
+            else:
+                for _, instance in dataset.iterrows():
+                    result = _process_instance_wrapper(
+                        process_instance_func=process_instance_func,
+                        instance=instance,
+                        metadata=metadata,
+                        use_mp=False,
+                        max_retries=max_retries,
+                    )
                     update_progress(result, pbar, output_fp)
-        else:
-            for _, instance in dataset.iterrows():
-                result = _process_instance_wrapper(
-                    process_instance_func=process_instance_func,
-                    instance=instance,
-                    metadata=metadata,
-                    use_mp=False,
-                    max_retries=max_retries,
-                )
-                update_progress(result, pbar, output_fp)
+                    turn_file.write(f'{result.instance_id}: {result.num_turns}\n')
 
     except KeyboardInterrupt:
         print('\nKeyboardInterrupt received. Cleaning up...\n')
