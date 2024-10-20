@@ -27,6 +27,7 @@ class DockerRuntimeBuilder(RuntimeBuilder):
         self,
         path: str,
         tags: list[str],
+        platform: str | None = None,
         use_local_cache: bool = False,
         extra_build_args: list[str] | None = None,
     ) -> str:
@@ -35,6 +36,7 @@ class DockerRuntimeBuilder(RuntimeBuilder):
         Args:
             path (str): The path to the Docker build context.
             tags (list[str]): A list of image tags to apply to the built image.
+            platform (str, optional): The target platform for the build. Defaults to None.
             use_local_cache (bool, optional): Whether to use and update the local build cache. Defaults to True.
             extra_build_args (list[str], optional): Additional arguments to pass to the Docker build command. Defaults to None.
 
@@ -58,12 +60,6 @@ class DockerRuntimeBuilder(RuntimeBuilder):
         target_image_hash_name = tags[0]
         target_image_repo, target_image_hash_tag = target_image_hash_name.split(':')
         target_image_tag = tags[1].split(':')[1] if len(tags) > 1 else None
-        print(f'hash_name: {target_image_hash_name}')
-        print(f'OH version: {oh_version}')
-        print(f'date: {datetime.datetime.now().isoformat()}')
-        print(f'path: {path}')
-        # Check if the image exists and pull if necessary
-        self.image_exists(target_image_hash_name)
 
         buildx_cmd = [
             'docker',
@@ -75,6 +71,10 @@ class DockerRuntimeBuilder(RuntimeBuilder):
             f'--tag={target_image_hash_name}',
             '--load',
         ]
+
+        # Include the platform argument only if platform is specified
+        if platform:
+            buildx_cmd.append(f'--platform={platform}')
 
         cache_dir = '/tmp/.buildx-cache'
         if use_local_cache and self._is_cache_usable(cache_dir):
