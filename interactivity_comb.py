@@ -55,7 +55,7 @@ def process_files(folder_path):
 
 
 # Usage
-folder_path = 'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/claude-3-5-sonnet-20240620_maxiter_4_N_v1.9-no-hint/'
+folder_path = 'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/deepseek-chat_maxiter_4_N_v1.9-no-hint/'
 results = process_files(folder_path)
 
 print(f"Total files processed: {results['total_files']}")

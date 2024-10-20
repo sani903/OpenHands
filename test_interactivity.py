@@ -9,9 +9,9 @@ input_file = 'evaluation/swe_bench/data/subset_ids.txt'
 config_file = 'evaluation/swe_bench/config.toml'
 
 # Path to the output.jsonl file
-gold_file = 'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/claude-3-5-sonnet-20240620_maxiter_4_N_v1.9-no-hint/test_gold.txt'
-questions_file = 'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/claude-3-5-sonnet-20240620_maxiter_4_N_v1.9-no-hint/question.txt'
-output_file = 'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/claude-3-5-sonnet-20240620_maxiter_4_N_v1.9-no-hint/output.jsonl'
+gold_file = 'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/deepseek-chat_maxiter_4_N_v1.9-no-hint/test_gold.txt'
+questions_file = 'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/deepseek-chat_maxiter_4_N_v1.9-no-hint/question.txt'
+output_file = 'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/deepseek-chat_maxiter_4_N_v1.9-no-hint/output.jsonl'
 # skip = True
 # Read the input file line by line
 
@@ -53,9 +53,9 @@ with open(input_file, 'r') as f:
         # Remove any leading/trailing whitespace
         #        remove_docker_images()
         new_string = line.strip()
-        new_questions_file = f'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/claude-3-5-sonnet-20240620_maxiter_4_N_v1.9-no-hint/test_{new_string}_questions.txt'
-        new_output_file = f'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/claude-3-5-sonnet-20240620_maxiter_4_N_v1.9-no-hint/test_{new_string}_output.jsonl'
-        new_gold_file = f'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/claude-3-5-sonnet-20240620_maxiter_4_N_v1.9-no-hint/test_{new_string}_gold.txt'
+        new_questions_file = f'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/deepseek-chat_maxiter_4_N_v1.9-no-hint/test_{new_string}_questions.txt'
+        new_output_file = f'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/deepseek-chat_maxiter_4_N_v1.9-no-hint/test_{new_string}_output.jsonl'
+        new_gold_file = f'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/deepseek-chat_maxiter_4_N_v1.9-no-hint/test_{new_string}_gold.txt'
         if os.path.exists(new_output_file):
             print(new_string)
             continue
@@ -75,7 +75,7 @@ with open(input_file, 'r') as f:
             subprocess.run(
                 [
                     './evaluation/swe_bench/scripts/test_interactivity.sh',
-                    'llm.claude-sonnet-3-5',
+                    'llm.deepseek-chat',
                 ],
                 check=True,
             )

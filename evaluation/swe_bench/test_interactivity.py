@@ -69,7 +69,6 @@ class FakeUser:
             model='neulab/claude-3-5-sonnet-20240620', messages=self.chat_history
         )
         self.turns += 1
-        print('HEREEEEE')
         reply = response.choices[0].message.content
         self.chat_history.append({'role': 'assistant', 'content': reply})
 
@@ -80,8 +79,8 @@ USE_HINT_TEXT = os.environ.get('USE_HINT_TEXT', 'false').lower() == 'true'
 USE_INSTANCE_IMAGE = os.environ.get('USE_INSTANCE_IMAGE', 'false').lower() == 'true'
 
 AGENT_CLS_TO_FAKE_USER_RESPONSE_FN = {
-    'CodeActAgent': lambda state, metadata: fake_user_response(state, metadata),
-    'CodeActSWEAgent': lambda state, metadata: fake_user_response(state, metadata),
+    'CodeActAgent': lambda state: fake_user_response(state, metadata),
+    'CodeActSWEAgent': lambda state: fake_user_response(state, metadata),
 }
 
 
@@ -149,7 +148,7 @@ def get_instruction(instance: pd.Series, metadata: EvalMetadata):
         if USE_HINT_TEXT and instance.hints_text:
             instruction += f'# Hints\n{instance.hints_text}\n\n'
         instruction += (
-            'Ensure you have all the details you require to solve the issue.  Please feel free to ask targeted questions if you encounter any ambiguities or missing information that would help clarify the problem. You should aim to gather the essential details to solve the issue efficiently.\n'
+            'Your success depends on having all relevant details to solve the issue effectively. Whenever you encounter unclear or missing information, proactively ask questions to fill those gaps. Even minor ambiguities can affect the outcome, so always prioritize clarifying questions. Avoid questions only when you are 100% certain no further clarification is needed.\n'
             'You should NOT modify any existing test case files. If needed, you can add new test cases in a NEW file to reproduce the issue.\n'
             'You SHOULD INCLUDE PROPER INDENTATION in your edit commands.\n'
         )
@@ -228,7 +227,7 @@ def initialize_runtime(
     logger.info('-' * 30)
     logger.info('BEGIN Runtime Initialization Fn')
     logger.info('-' * 30)
-    workspace_dir_name = _get_swebench_workspace_dir_name(instance)
+    # workspace_dir_name = _get_swebench_workspace_dir_name(instance)
     obs: CmdOutputObservation
 
     # Set instance id
@@ -320,7 +319,12 @@ def initialize_runtime(
             obs.exit_code == 0
         ), f'Failed to source /swe_util/swe_entry.sh: {obs.content}'
 
-    action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
+    action = CmdRunAction(command='cd /workspace/')
+    action.timeout = 600
+    logger.info(action, extra={'msg_type': 'ACTION'})
+    obs = runtime.run_action(action)
+    logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+    action = CmdRunAction(command='cd "$(ls | head -n 1)"')
     action.timeout = 600
     logger.info(action, extra={'msg_type': 'ACTION'})
     obs = runtime.run_action(action)
@@ -366,9 +370,13 @@ def complete_runtime(
     logger.info('BEGIN Runtime Completion Fn')
     logger.info('-' * 30)
     obs: CmdOutputObservation
-    workspace_dir_name = _get_swebench_workspace_dir_name(instance)
-
-    action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
+    # workspace_dir_name = _get_swebench_workspace_dir_name(instance)
+    action = CmdRunAction(command='cd /workspace/')
+    action.timeout = 600
+    logger.info(action, extra={'msg_type': 'ACTION'})
+    obs = runtime.run_action(action)
+    logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+    action = CmdRunAction(command='cd "$(ls | head -n 1)"')
     action.timeout = 600
     logger.info(action, extra={'msg_type': 'ACTION'})
     obs = runtime.run_action(action)
@@ -583,7 +591,8 @@ if __name__ == '__main__':
     ):
         for col in ['PASS_TO_PASS', 'FAIL_TO_PASS']:
             instances[col] = instances[col].apply(lambda x: str(x))
-
+    with open(os.path.join(metadata.eval_output_dir, 'question.txt'), 'w') as f:
+        f.write('0\n')
     run_evaluation(
         instances, metadata, output_file, args.eval_num_workers, process_instance
     )

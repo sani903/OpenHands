@@ -12,7 +12,7 @@ total_error = 0
 
 # Iterate through all files in the directory
 for filename in os.listdir(directory):
-    if filename.startswith('ablation') and filename.endswith('report.json'):
+    if filename.startswith('interact') and filename.endswith('report.json'):
         file_path = os.path.join(directory, filename)
 
         # Read the JSON file

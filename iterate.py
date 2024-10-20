@@ -1,3 +1,4 @@
+import os
 import shutil
 import subprocess
 
@@ -8,8 +9,8 @@ input_file = 'evaluation/swe_bench/data/subset_ids.txt'
 config_file = 'evaluation/swe_bench/config.toml'
 
 # Path to the output.jsonl file
-output_file = 'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/deepseek-chat_maxiter_30_N_v1.9-no-hint/output.jsonl'
-turns_file = 'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/deepseek-chat_maxiter_30_N_v1.9-no-hint/output_turns.txt'
+output_file = 'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/gpt-4o-2024-05-13_maxiter_30_N_v1.9-no-hint/output.jsonl'
+turns_file = 'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/gpt-4o-2024-05-13_maxiter_30_N_v1.9-no-hint/output_turns.txt'
 # skip = True
 # Read the input file line by line
 
@@ -51,11 +52,11 @@ with open(input_file, 'r') as f:
         # Remove any leading/trailing whitespace
         #        remove_docker_images()
         new_string = line.strip()
-        new_output_file = f'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/deepseek-chat_maxiter_30_N_v1.9-no-hint/base_{new_string}_output.jsonl'
-        new_turns_file = f'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/deepseek-chat_maxiter_30_N_v1.9-no-hint/base_{new_string}_turns.txt'
-        # if os.path.exists(new_output_file):
-        #     print(new_string)
-        #     continue
+        new_output_file = f'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/gpt-4o-2024-05-13_maxiter_30_N_v1.9-no-hint/ablation_{new_string}_output.jsonl'
+        new_turns_file = f'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/gpt-4o-2024-05-13_maxiter_30_N_v1.9-no-hint/ablation_{new_string}_turns.txt'
+        if os.path.exists(new_output_file):
+            print(new_string)
+            continue
         #       if skip:
         #          continue
         #        if 'matplotlib' in new_string or 'pytest' in new_string or 'sphinx' in new_string or 'scikit-learn' in new_string:
@@ -72,7 +73,7 @@ with open(input_file, 'r') as f:
             subprocess.run(
                 [
                     './evaluation/swe_bench/scripts/run_infer.sh',
-                    'llm.deepseek-chat',
+                    'llm.gpt-4-o',
                 ],
                 check=True,
             )

@@ -199,6 +199,15 @@ def get_config(
     return config
 
 
+def _get_alt_workspace_dir_name(instance: pd.Series) -> str:
+    s = f'{instance.repo}__{instance.version}'.replace('/', '__')
+    dot_index = s.rfind('.')
+    if dot_index != -1:
+        return s[:dot_index]
+    else:
+        return s
+
+
 def initialize_runtime(
     runtime: Runtime,
     instance: pd.Series,  # this argument is not required
@@ -210,7 +219,7 @@ def initialize_runtime(
     logger.info('-' * 30)
     logger.info('BEGIN Runtime Initialization Fn')
     logger.info('-' * 30)
-    workspace_dir_name = _get_swebench_workspace_dir_name(instance)
+    # workspace_dir_name = _get_swebench_workspace_dir_name(instance)
     obs: CmdOutputObservation
 
     # Set instance id
@@ -300,12 +309,28 @@ def initialize_runtime(
         assert (
             obs.exit_code == 0
         ), f'Failed to source /swe_util/swe_entry.sh: {obs.content}'
-
-    action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
+    action = CmdRunAction(command='cd /workspace/')
     action.timeout = 600
     logger.info(action, extra={'msg_type': 'ACTION'})
     obs = runtime.run_action(action)
     logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+    action = CmdRunAction(command='cd "$(ls | head -n 1)"')
+    action.timeout = 600
+    logger.info(action, extra={'msg_type': 'ACTION'})
+    obs = runtime.run_action(action)
+    logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+    #    action = CmdRunAction(command=f'cd {workspace_dir_name}')
+    #    action.timeout = 600
+    #    logger.info(action, extra={'msg_type': 'ACTION'})
+    #    obs = runtime.run_action(action)
+    #    logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+    #   if obs.exit_code!=0:
+    #       workspace_dir_name = _get_alt_workspace_dir_name(instance)
+    #       action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
+    #       action.timeout = 600
+    #       logger.info(action, extra={'msg_type': 'ACTION'})
+    #       obs = runtime.run_action(action)
+    #       logger.info(obs, extra={'msg_type': 'OBSERVATION'})
     if obs.exit_code != 0:
         logger.error(f'Command failed with exit code {obs.exit_code}: {obs.content}')
         # Handle the error appropriately, maybe by raising a custom exception
@@ -347,9 +372,15 @@ def complete_runtime(
     logger.info('BEGIN Runtime Completion Fn')
     logger.info('-' * 30)
     obs: CmdOutputObservation
-    workspace_dir_name = _get_swebench_workspace_dir_name(instance)
+    # workspace_dir_name = _get_swebench_workspace_dir_name(instance)
 
-    action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
+    action = CmdRunAction(command='cd /workspace/')
+    action.timeout = 600
+    logger.info(action, extra={'msg_type': 'ACTION'})
+    obs = runtime.run_action(action)
+    logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+
+    action = CmdRunAction(command='cd "$(ls | head -n 1)"')
     action.timeout = 600
     logger.info(action, extra={'msg_type': 'ACTION'})
     obs = runtime.run_action(action)
