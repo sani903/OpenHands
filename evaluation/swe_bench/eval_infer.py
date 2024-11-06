@@ -96,13 +96,13 @@ def process_instance(
     reset_logger: bool = True,
 ) -> EvalOutput:
     # Setup the logger properly, so you can run multi-processing to parallelize the evaluation
-    if reset_logger:
-        global output_file
-        log_dir = output_file.replace('.jsonl', '.logs')
-        os.makedirs(log_dir, exist_ok=True)
-        reset_logger_for_multiprocessing(logger, instance.instance_id, log_dir)
-    else:
-        logger.info(f'Starting evaluation for instance {instance.instance_id}.')
+    # if reset_logger:
+    #     global output_file
+    #     log_dir = output_file.replace('.jsonl', '.logs')
+    #     os.makedirs(log_dir, exist_ok=True)
+    #     reset_logger_for_multiprocessing(logger, instance.instance_id, log_dir)
+    # else:
+    #     logger.info(f'Starting evaluation for instance {instance.instance_id}.')
 
     config = get_config(instance)
     instance_id = instance.instance_id

@@ -40,36 +40,57 @@ client = openai.OpenAI(
 
 
 class FakeUser:
-    def __init__(self, issue, hidden_details):
+    # def __init__(self, issue, hidden_details):
+    #     self.system_message = f"""
+    #     You are a GitHub user reporting an issue. Here are the details of your issue and environment:
+
+    #     Issue: {issue}
+
+    #     Hidden details (only reveal if specifically asked):
+    #     {' '.join(hidden_details)}
+
+    #     Your task is to respond to questions from a coder who is trying to solve your issue. Follow these rules:
+    #     1. If the coder asks a question that is directly related to the hidden details, provide that information.
+    #     2. If the question is not related to the hidden details, respond based on the original issue description.
+    #     3. If you're unsure whether to reveal information, err on the side of caution and don't reveal it.
+    #     4. Always stay in character as a user reporting an issue, not as an AI assistant.
+    #     5. Keep your responses concise and to the point.
+    #     6. The coder has limited turns to solve the issue. Do not interact with the coder beyond 3 turns.
+
+    #     Respond with "I don't have that information" if the question is unrelated or you're unsure.
+    #     """
+    #     self.chat_history = [{'role': 'system', 'content': self.system_message}]
+    #     self.turns = 0
+    def __init__(self, issue):
         self.system_message = f"""
         You are a GitHub user reporting an issue. Here are the details of your issue and environment:
 
         Issue: {issue}
 
-        Hidden details (only reveal if specifically asked):
-        {' '.join(hidden_details)}
-
-        Your task is to respond to questions from a coder who is trying to solve your issue. Follow these rules:
-        1. If the coder asks a question that is directly related to the hidden details, provide that information.
-        2. If the question is not related to the hidden details, respond based on the original issue description.
-        3. If you're unsure whether to reveal information, err on the side of caution and don't reveal it.
-        4. Always stay in character as a user reporting an issue, not as an AI assistant.
-        5. Keep your responses concise and to the point.
+        Your task is to respond to questions from a coder who is trying to solve your issue. The coder has a summarized version of the issue you have. Follow these rules:
+        1. If the coder asks a question that is directly related to the information in the issue you have, provide that information.
+        2. If you're unsure whether to reveal information or you do not have that information, err on the side of caution and don't reveal it.
+        3. Always stay in character as a user reporting an issue, not as an AI assistant.
+        4. Keep your responses concise and to the point.
+        5. The coder has limited turns to solve the issue. Do not interact with the coder beyond 3 turns.
 
         Respond with "I don't have that information" if the question is unrelated or you're unsure.
         """
         self.chat_history = [{'role': 'system', 'content': self.system_message}]
+        self.turns = 0
 
     def generate_reply(self, question):
+        if self.turns > 3:
+            return 'Please continue working on the task. Do NOT ask for more help.'
         self.chat_history.append({'role': 'user', 'content': question})
 
         response = client.chat.completions.create(
-            model='neulab/claude-3-5-sonnet-20240620', messages=self.chat_history
+            model='neulab/gpt-4o-2024-08-06', messages=self.chat_history
         )
 
         reply = response.choices[0].message.content
         self.chat_history.append({'role': 'assistant', 'content': reply})
-
+        self.turns+=1
         return reply
 
 
@@ -133,6 +154,7 @@ def get_instruction(instance: pd.Series, metadata: EvalMetadata):
             instruction += f'# Hints\n{instance.hints_text}\n\n'
         instruction += (
             'I have not provided all the necessary details about the issue and I have some hidden details that are helpful. Please ask me specifc questions using non-code commands to gather the relevant information that I have to help you solve the issue. Ensure you have all the details you require to solve the issue.\n'
+            'You have a limited number of turns. Do NOT interact with me more than two times so as to maximize the number of turns you have to work on the solution.\n'
             'You should NOT modify any existing test case files. If needed, you can add new test cases in a NEW file to reproduce the issue.\n'
             'You SHOULD INCLUDE PROPER INDENTATION in your edit commands.\n'
         )
@@ -162,11 +184,7 @@ def get_config(
     SWE_BENCH_CONTAINER_IMAGE = 'ghcr.io/opendevin/eval-swe-bench:full-v1.2.1'
     if USE_INSTANCE_IMAGE:
         # We use a different instance image for the each instance of swe-bench eval
-        search_key = instance['instance_id']
-        json_file_path = 'evaluation/swe_bench/data/mappings.json'
-        with open(json_file_path, 'r') as file:
-            data = json.load(file)
-        base_container_image = data[search_key]
+        base_container_image = get_instance_docker_image(instance['instance_id'])
         logger.info(
             f'Using instance container image: {base_container_image}. '
             f'Please make sure this image exists. '
@@ -418,18 +436,17 @@ def process_instance(
 ) -> EvalOutput:
     config = get_config(instance, metadata)
     global fake_user
-    # df = pd.read_csv("data/fake_user_issues_under_0.csv")
-    # issue = df.loc[df['instance_id'] == instance["instance_id"], 'issue'].iloc[0]
-    # hidden_details_merged = df.loc[df['instance_id'] == instance["instance_id"], 'hidden_details'].iloc[0]
     original_issue = instance.original_issue
-    hidden_details_merged = instance.hidden_details
-    print(f"""
-    These are the hidden_details: {hidden_details_merged}
-    """)
-    logger.info(f'These are the hidden_details: {hidden_details_merged}')
-    delimiter = '|||'
-    hidden_details_split = hidden_details_merged.split(delimiter)
-    fake_user = FakeUser(issue=original_issue, hidden_details=hidden_details_split)
+    # hidden_details_merged = instance.hidden_details
+    # print(f"""
+    # These are the hidden_details: {hidden_details_merged}
+    # """)
+    # logger.info(f'These are the hidden_details: {hidden_details_merged}')
+    # delimiter = '|||'
+    # hidden_details_split = hidden_details_merged.split(delimiter)
+    issue = str(original_issue) + str(" ") + str(instance.hints_text)
+    # fake_user = FakeUser(issue=issue, hidden_details=hidden_details_split)
+    fake_user = FakeUser(issue=issue)
     # Setup the logger properly, so you can run multi-processing to parallelize the evaluation
     if reset_logger:
         log_dir = os.path.join(metadata.eval_output_dir, 'infer_logs')
@@ -525,7 +542,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--csv_file',
         type=str,
-        default='evaluation/swe_bench/data/transformed_verified_underspecified_0.csv',
+        default='evaluation/swe_bench/data/sp_summaries_verified_0.csv',
         help='Path to the CSV file containing the dataset',
     )
     parser.add_argument(

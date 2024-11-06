@@ -115,7 +115,7 @@ def get_instruction(instance: pd.Series, metadata: EvalMetadata):
             f'{instance.original_issue}\n'
             '--- END ISSUE ---\n\n'
         )
-        if USE_HINT_TEXT and instance.hints_text:
+        if instance.hints_text:
             instruction += (
                 f'--- BEGIN HINTS ---\n{instance.hints_text}\n--- END HINTS ---\n'
             )
@@ -128,7 +128,7 @@ def get_instruction(instance: pd.Series, metadata: EvalMetadata):
             '# Problem Statement\n'
             f'{instance.original_issue}\n\n'
         )
-        if USE_HINT_TEXT and instance.hints_text:
+        if instance.hints_text:
             instruction += f'# Hints\n{instance.hints_text}\n\n'
         instruction += (
             'IMPORTANT: You should ONLY interact with the environment provided to you AND NEVER ASK FOR HUMAN HELP.\n'
@@ -161,11 +161,7 @@ def get_config(
     SWE_BENCH_CONTAINER_IMAGE = 'ghcr.io/opendevin/eval-swe-bench:full-v1.2.1'
     if USE_INSTANCE_IMAGE:
         # We use a different instance image for the each instance of swe-bench eval
-        search_key = instance['instance_id']
-        json_file_path = 'evaluation/swe_bench/data/mappings.json'
-        with open(json_file_path, 'r') as file:
-            data = json.load(file)
-        base_container_image = data[search_key]
+        base_container_image = get_instance_docker_image(instance['instance_id'])
         logger.info(
             f'Using instance container image: {base_container_image}. '
             f'Please make sure this image exists. '

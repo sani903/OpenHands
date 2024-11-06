@@ -3,20 +3,30 @@ import os
 import re
 
 
+def extract_conversation(history):
+    conversation = []
+    for step in history:
+        if step['source'] == 'user':
+            conversation.append({'role': 'user', 'content': step['message']})
+        elif step['source'] == 'agent':
+            conversation.append({'role': 'assistant', 'content': step['message']})
+    return conversation
+
 def load_data(file_path):
     data_list = []
     directory_name = os.path.dirname(file_path)
     print('Directory name: ', directory_name)
-    with open(os.path.join(directory_name, 'report.json'), 'r') as report_file:
-        data = json.load(report_file)
-        resolved_ids = data.get('resolved_ids', [])
+    # with open(os.path.join(directory_name, 'report.json'), 'r') as report_file:
+    #     data = json.load(report_file)
+    #     resolved_ids = data.get('resolved_ids', [])
     with open(file_path, 'r') as file:
         for line in file:
             data = json.loads(line)
             instance = data.get('instance_id')
             problem_statement = data.get('instance', {}).get('problem_statement')
-            resolved = 1 if instance in resolved_ids else 0
-            data_list.append((instance, problem_statement, resolved))
+            # resolved = 1 if instance in resolved_ids else 0
+            conversation = extract_conversation(data.get('history', []))
+            data_list.append((instance, problem_statement,0, conversation))
     return data_list
 
 

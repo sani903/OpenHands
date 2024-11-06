@@ -1,3 +1,4 @@
+import sys 
 import os
 import shutil
 import subprocess
@@ -7,10 +8,16 @@ input_file = 'evaluation/swe_bench/data/subset_ids.txt'
 
 # Path to the config.toml file
 config_file = 'evaluation/swe_bench/config.toml'
+current_directory = os.getcwd()
 
+# Add the current directory to sys.path
+sys.path.append(current_directory)
+
+# Optionally, you can also modify the PATH environment variable
+os.environ['PATH'] += os.pathsep + current_directory
 # Path to the output.jsonl file
-output_file = 'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/gpt-4o-2024-05-13_maxiter_30_N_v1.9-no-hint/output.jsonl'
-turns_file = 'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/gpt-4o-2024-05-13_maxiter_30_N_v1.9-no-hint/output_turns.txt'
+output_file = 'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/deepseek-chat_maxiter_30_N_v1.9-no-hint/output.jsonl'
+turns_file = 'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/deepseek-chat_maxiter_30_N_v1.9-no-hint/output_turns.txt'
 # skip = True
 # Read the input file line by line
 
@@ -52,8 +59,8 @@ with open(input_file, 'r') as f:
         # Remove any leading/trailing whitespace
         #        remove_docker_images()
         new_string = line.strip()
-        new_output_file = f'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/gpt-4o-2024-05-13_maxiter_30_N_v1.9-no-hint/ablation_{new_string}_output.jsonl'
-        new_turns_file = f'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/gpt-4o-2024-05-13_maxiter_30_N_v1.9-no-hint/ablation_{new_string}_turns.txt'
+        new_output_file = f'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/deepseek-chat_maxiter_30_N_v1.9-no-hint/hidden_{new_string}_output.jsonl'
+        new_turns_file = f'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/deepseek-chat_maxiter_30_N_v1.9-no-hint/hidden_{new_string}_turns.txt'
         if os.path.exists(new_output_file):
             print(new_string)
             continue
@@ -68,14 +75,19 @@ with open(input_file, 'r') as f:
 
         with open(config_file, 'w') as config:
             config.write(f'selected_ids = [ "{new_string}" ]')
+        os.environ['ALLHANDS_API_KEY'] = "ah-73a36a7d-a9f4-4f52-aa85-215abc90a96f"
+        os.environ['RUNTIME'] = "remote"
+        os.environ['SANDBOX_REMOTE_RUNTIME_API_URL'] = "https://runtime.eval.all-hands.dev"
+        os.environ['EVAL_DOCKER_IMAGE_PREFIX'] = "us-central1-docker.pkg.dev/evaluation-092424/swe-bench-images"
+
         try:
-            # Run the evaluation command
             subprocess.run(
                 [
                     './evaluation/swe_bench/scripts/run_infer.sh',
-                    'llm.gpt-4-o',
+                    'llm.deepseek-chat',
                 ],
-                check=True,
+            check=True,
+            env=os.environ  # Pass the environment variables
             )
         except subprocess.CalledProcessError as e:
             print(f'Subprocess error: {e}')

@@ -2,26 +2,37 @@ import os
 import subprocess
 
 # Directory containing the .jsonl files
-output_dir = 'evaluation/evaluation_outputs/outputs/swe-bench-lite/CodeActAgent/deepseek-chat_maxiter_30_N_v1.9-no-hint/'
+output_dir = 'evaluation/evaluation_outputs/outputs/princeton-nlp__SWE-bench-test/CodeActAgent/claude-3-5-sonnet-20241022_maxiter_30_N_v1.9-no-hint-run_1/'
 # Evaluation script path
-eval_script = './evaluation/swe_bench/scripts/eval_infer.sh'
+# eval_script = './evaluation/swe_bench/scripts/eval_infer.sh'
 
-
+os.environ['ALLHANDS_API_KEY'] = "ah-73a36a7d-a9f4-4f52-aa85-215abc90a96f"
+os.environ['RUNTIME'] = "remote"
+os.environ['SANDBOX_REMOTE_RUNTIME_API_URL'] = "https://runtime.eval.all-hands.dev"
+os.environ['EVAL_DOCKER_IMAGE_PREFIX'] = "us-central1-docker.pkg.dev/evaluation-092424/swe-bench-images"
 def evaluate_files():
     print('Current working directory:', os.getcwd())
     # Find all .jsonl files ending with output.jsonl in the specified directory and its subdirectories
     for root, _, files in os.walk(output_dir):
         for file in files:
             print(file)
-            if file.startswith('interact') and file.endswith('output.jsonl'):
+            if file.startswith('output') and file.endswith('1.jsonl'):
+            #if file.startswith('interact') and file.endswith('output.jsonl'):
                 file_path = os.path.join(root, file)
                 print(f'Evaluating file: {file_path}')
 
-                prefix = file.replace('output.jsonl', '')
+                prefix = file.replace('.jsonl', '')
 
                 # Run the evaluation script for each file
                 try:
-                    subprocess.run([eval_script, file_path], check=True)
+                    subprocess.run(
+                        [
+                            './evaluation/swe_bench/scripts/eval_infer_remote.sh',
+                            file_path
+                        ],
+                        check=True,
+                        env=os.environ  # Pass the environment variables
+                    )
                     print(f'Evaluation complete for {file_path}')
 
                     # Rename README.md and report.json with the prefix

@@ -13,7 +13,7 @@ fi
 
 if [ -z "$DATASET" ]; then
   echo "DATASET not specified, use default princeton-nlp/SWE-bench_Lite"
-  DATASET="princeton-nlp/SWE-bench_Lite"
+  DATASET="princeton-nlp/SWE-bench"
 fi
 
 if [ -z "$SPLIT" ]; then
@@ -23,7 +23,7 @@ fi
 
 if [ -z "$NUM_WORKERS" ]; then
   echo "NUM_WORKERS not specified, use default 1"
-  NUM_WORKERS=1
+  NUM_WORKERS=16
 fi
 
 echo "... Evaluating on $INPUT_FILE ..."

@@ -164,11 +164,7 @@ def get_config(
     SWE_BENCH_CONTAINER_IMAGE = 'ghcr.io/opendevin/eval-swe-bench:full-v1.2.1'
     if USE_INSTANCE_IMAGE:
         # We use a different instance image for the each instance of swe-bench eval
-        search_key = instance['instance_id']
-        json_file_path = 'evaluation/swe_bench/data/mappings.json'
-        with open(json_file_path, 'r') as file:
-            data = json.load(file)
-        base_container_image = data[search_key]
+        base_container_image = get_instance_docker_image(instance['instance_id'])
         logger.info(
             f'Using instance container image: {base_container_image}. '
             f'Please make sure this image exists. '
@@ -537,7 +533,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--csv_file',
         type=str,
-        default='evaluation/swe_bench/data/transformed_verified_underspecified_0.csv',
+        default='evaluation/swe_bench/data/sp_summaries_verified_0.csv',
         help='Path to the CSV file containing the dataset',
     )
     parser.add_argument(
