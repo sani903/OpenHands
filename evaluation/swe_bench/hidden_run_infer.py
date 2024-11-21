@@ -3,7 +3,7 @@ import json
 import os
 import tempfile
 from typing import Any
-
+from openhands.events.serialization.event import event_to_dict
 import openai
 import pandas as pd
 import toml
@@ -11,10 +11,8 @@ import toml
 import openhands.agenthub
 from evaluation.swe_bench.prompt import CODEACT_SWE_PROMPT
 from evaluation.utils.shared import (
-    EvalException,
     EvalMetadata,
     EvalOutput,
-    assert_and_raise,
     make_metadata,
     prepare_dataset,
     reset_logger_for_multiprocessing,
@@ -29,14 +27,17 @@ from openhands.core.config import (
     get_llm_config_arg,
     get_parser,
 )
+from openhands.events.serialization.event import event_to_dict
 from openhands.core.logger import openhands_logger as logger
 from openhands.core.main import create_runtime, run_controller
 from openhands.events.action import CmdRunAction, MessageAction
 from openhands.events.observation import CmdOutputObservation, ErrorObservation
-from openhands.events.serialization.event import event_to_dict
 from openhands.runtime.base import Runtime
 from openhands.runtime.utils.shutdown_listener import sleep_if_should_continue
 from openhands.utils.async_utils import call_async_from_sync
+USE_HINT_TEXT = os.environ.get('USE_HINT_TEXT', 'false').lower() == 'true'
+USE_INSTANCE_IMAGE = os.environ.get('USE_INSTANCE_IMAGE', 'false').lower() == 'true'
+RUN_WITH_BROWSING = os.environ.get('RUN_WITH_BROWSING', 'false').lower() == 'true'
 
 client = openai.OpenAI(
     api_key=os.environ['LITELLM_API_KEY'],
@@ -80,7 +81,6 @@ class FakeUser:
 
 USE_HINT_TEXT = os.environ.get('USE_HINT_TEXT', 'false').lower() == 'true'
 USE_INSTANCE_IMAGE = os.environ.get('USE_INSTANCE_IMAGE', 'false').lower() == 'true'
-RUN_WITH_BROWSING = os.environ.get('RUN_WITH_BROWSING', 'false').lower() == 'true'
 
 AGENT_CLS_TO_FAKE_USER_RESPONSE_FN = {
     'CodeActAgent': lambda state: fake_user_response(state),
@@ -224,6 +224,15 @@ def get_config(
     return config
 
 
+def _get_alt_workspace_dir_name(instance: pd.Series) -> str:
+    s = f'{instance.repo}__{instance.version}'.replace('/', '__')
+    dot_index = s.rfind('.')
+    if dot_index != -1:
+        return s[:dot_index]
+    else:
+        return s
+
+
 def initialize_runtime(
     runtime: Runtime,
     instance: pd.Series,  # this argument is not required
@@ -246,17 +255,22 @@ def initialize_runtime(
     logger.info(action, extra={'msg_type': 'ACTION'})
     obs = runtime.run_action(action)
     logger.info(obs, extra={'msg_type': 'OBSERVATION'})
-
-    assert_and_raise(
-        obs.exit_code == 0, f'Failed to export SWE_INSTANCE_ID: {str(obs)}'
-    )
+    if obs.exit_code != 0:
+        logger.error(f'Command failed with exit code {obs.exit_code}: {obs.content}')
+        # Handle the error appropriately, maybe by raising a custom exception
+        raise RuntimeError(f'Failed to initialize runtime: {obs.content}')
+    # assert obs.exit_code == 0
 
     action = CmdRunAction(command="""export USER=$(whoami); echo USER=${USER} """)
     action.timeout = 600
     logger.info(action, extra={'msg_type': 'ACTION'})
     obs = runtime.run_action(action)
     logger.info(obs, extra={'msg_type': 'OBSERVATION'})
-    assert_and_raise(obs.exit_code == 0, f'Failed to export USER: {str(obs)}')
+    if obs.exit_code != 0:
+        logger.error(f'Command failed with exit code {obs.exit_code}: {obs.content}')
+        # Handle the error appropriately, maybe by raising a custom exception
+        raise RuntimeError(f'Failed to initialize runtime: {obs.content}')
+    #    assert obs.exit_code == 0
 
     if USE_INSTANCE_IMAGE:
         # inject the init script
@@ -268,10 +282,9 @@ def initialize_runtime(
         logger.info(action, extra={'msg_type': 'ACTION'})
         obs = runtime.run_action(action)
         logger.info(obs, extra={'msg_type': 'OBSERVATION'})
-        assert_and_raise(
-            obs.exit_code == 0,
-            f'Failed to create /swe_util/eval_data/instances: {str(obs)}',
-        )
+        assert (
+            obs.exit_code == 0
+        ), f'Failed to create /swe_util/eval_data/instances: {obs.content}'
 
         swe_instance_json_name = 'swe-bench-instance.json'
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -297,58 +310,62 @@ def initialize_runtime(
         logger.info(action, extra={'msg_type': 'ACTION'})
         obs = runtime.run_action(action)
         logger.info(obs, extra={'msg_type': 'OBSERVATION'})
-        assert_and_raise(obs.exit_code == 0, f'Failed to cat ~/.bashrc: {str(obs)}')
+        assert obs.exit_code == 0
 
         action = CmdRunAction(command='source ~/.bashrc')
         action.timeout = 600
         logger.info(action, extra={'msg_type': 'ACTION'})
         obs = runtime.run_action(action)
         logger.info(obs, extra={'msg_type': 'OBSERVATION'})
-        if isinstance(obs, ErrorObservation):
-            logger.error(f'Failed to source ~/.bashrc: {str(obs)}')
-        assert_and_raise(obs.exit_code == 0, f'Failed to source ~/.bashrc: {str(obs)}')
+        assert obs.exit_code == 0
 
         action = CmdRunAction(command='source /swe_util/instance_swe_entry.sh')
         action.timeout = 3600
         logger.info(action, extra={'msg_type': 'ACTION'})
         obs = runtime.run_action(action)
         logger.info(obs, extra={'msg_type': 'OBSERVATION'})
-        assert_and_raise(
-            obs.exit_code == 0,
-            f'Failed to source /swe_util/instance_swe_entry.sh: {str(obs)}',
-        )
+        assert obs.exit_code == 0
     else:
         action = CmdRunAction(command='source /swe_util/swe_entry.sh')
         action.timeout = 1800
         logger.info(action, extra={'msg_type': 'ACTION'})
         obs = runtime.run_action(action)
         logger.info(obs, extra={'msg_type': 'OBSERVATION'})
-        assert_and_raise(
-            obs.exit_code == 0,
-            f'Failed to source /swe_util/swe_entry.sh: {str(obs)}',
-        )
-
-    action = CmdRunAction(command='cd /workspace/')
-    action.timeout = 600
-    logger.info(action, extra={'msg_type': 'ACTION'})
-    obs = runtime.run_action(action)
-    logger.info(obs, extra={'msg_type': 'OBSERVATION'})
-    assert_and_raise(
-        obs.exit_code == 0,
-        f'Failed to cd to /workspace/{workspace_dir_name}: {str(obs)}',
-    )
-    action = CmdRunAction(command='cd "$(ls | head -n 1)"')
-    action.timeout = 600
-    logger.info(action, extra={'msg_type': 'ACTION'})
-    obs = runtime.run_action(action)
-    logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+        assert (
+            obs.exit_code == 0
+        ), f'Failed to source /swe_util/swe_entry.sh: {obs.content}'
+    try: 
+        action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
+        # action = CmdRunAction(command='cd /workspace/')
+        action.timeout = 600
+        logger.info(action, extra={'msg_type': 'ACTION'})
+        obs = runtime.run_action(action)
+        logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+        assert obs.exit_code == 0
+    except:
+        action = CmdRunAction(command='cd /workspace/')
+        action.timeout = 600
+        logger.info(action, extra={'msg_type': 'ACTION'})
+        obs = runtime.run_action(action)
+        logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+        assert obs.exit_code == 0
+        action = CmdRunAction(command='cd "$(ls | head -n 1)"')
+        action.timeout = 600
+        logger.info(action, extra={'msg_type': 'ACTION'})
+        obs = runtime.run_action(action)
+        logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+    if obs.exit_code != 0:
+        logger.error(f'Command failed with exit code {obs.exit_code}: {obs.content}')
+        # Handle the error appropriately, maybe by raising a custom exception
+        raise RuntimeError(f'Failed to initialize runtime: {obs.content}')
     assert obs.exit_code == 0
+
     action = CmdRunAction(command='git reset --hard')
     action.timeout = 600
     logger.info(action, extra={'msg_type': 'ACTION'})
     obs = runtime.run_action(action)
     logger.info(obs, extra={'msg_type': 'OBSERVATION'})
-    assert_and_raise(obs.exit_code == 0, f'Failed to git reset --hard: {str(obs)}')
+    assert obs.exit_code == 0
 
     action = CmdRunAction(
         command='for remote_name in $(git remote); do git remote remove "${remote_name}"; done'
@@ -357,7 +374,7 @@ def initialize_runtime(
     logger.info(action, extra={'msg_type': 'ACTION'})
     obs = runtime.run_action(action)
     logger.info(obs, extra={'msg_type': 'OBSERVATION'})
-    assert_and_raise(obs.exit_code == 0, f'Failed to remove git remotes: {str(obs)}')
+    assert obs.exit_code == 0
 
     logger.info('-' * 30)
     logger.info('END Runtime Initialization Fn')
@@ -379,36 +396,45 @@ def complete_runtime(
     logger.info('-' * 30)
     obs: CmdOutputObservation
     workspace_dir_name = _get_swebench_workspace_dir_name(instance)
-
-    action = CmdRunAction(command='cd /workspace/')
-    action.timeout = 600
-    logger.info(action, extra={'msg_type': 'ACTION'})
-    obs = runtime.run_action(action)
-    logger.info(obs, extra={'msg_type': 'OBSERVATION'})
-    assert_and_raise(
-        isinstance(obs, CmdOutputObservation) and obs.exit_code == 0,
-        f'Failed to cd to /workspace/{workspace_dir_name}: {str(obs)}',
-    )
-
+    try: 
+        action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
+        # action = CmdRunAction(command='cd /workspace/')
+        action.timeout = 600
+        logger.info(action, extra={'msg_type': 'ACTION'})
+        obs = runtime.run_action(action)
+        logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+        assert obs.exit_code == 0
+    except:
+        action = CmdRunAction(command='cd /workspace/')
+        action.timeout = 600
+        logger.info(action, extra={'msg_type': 'ACTION'})
+        obs = runtime.run_action(action)
+        logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+        assert obs.exit_code == 0
+        action = CmdRunAction(command='cd "$(ls | head -n 1)"')
+        action.timeout = 600
+        logger.info(action, extra={'msg_type': 'ACTION'})
+        obs = runtime.run_action(action)
+        logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+    if obs.exit_code != 0:
+        logger.error(f'Command failed with exit code {obs.exit_code}: {obs.content}')
+        # Handle the error appropriately, maybe by raising a custom exception
+        raise RuntimeError(f'Failed to initialize runtime: {obs.content}')
+    assert obs.exit_code == 0
+    
     action = CmdRunAction(command='git config --global core.pager ""')
     action.timeout = 600
     logger.info(action, extra={'msg_type': 'ACTION'})
     obs = runtime.run_action(action)
     logger.info(obs, extra={'msg_type': 'OBSERVATION'})
-    assert_and_raise(
-        isinstance(obs, CmdOutputObservation) and obs.exit_code == 0,
-        f'Failed to git config --global core.pager "": {str(obs)}',
-    )
+    assert obs.exit_code == 0
 
     action = CmdRunAction(command='git add -A')
     action.timeout = 600
     logger.info(action, extra={'msg_type': 'ACTION'})
     obs = runtime.run_action(action)
     logger.info(obs, extra={'msg_type': 'OBSERVATION'})
-    assert_and_raise(
-        isinstance(obs, CmdOutputObservation) and obs.exit_code == 0,
-        f'Failed to git add -A: {str(obs)}',
-    )
+    assert obs.exit_code == 0
 
     n_retries = 0
     git_patch = None
@@ -433,9 +459,7 @@ def complete_runtime(
             logger.error(f'Error occurred: {obs.content}. Retrying...')
             sleep_if_should_continue(10)
         else:
-            assert_and_raise(False, f'Unexpected observation type: {str(obs)}')
-
-    assert_and_raise(git_patch is not None, 'Failed to get git diff (None)')
+            raise ValueError(f'Unexpected observation type: {type(obs)}')
 
     logger.info('-' * 30)
     logger.info('END Runtime Completion Fn')
@@ -449,7 +473,7 @@ def process_instance(
     reset_logger: bool = True,
 ) -> EvalOutput:
     config = get_config(instance, metadata)
-    global fake_user
+    # global fake_user
     # df = pd.read_csv("data/fake_user_issues_under_0.csv")
     # issue = df.loc[df['instance_id'] == instance["instance_id"], 'issue'].iloc[0]
     # hidden_details_merged = df.loc[df['instance_id'] == instance["instance_id"], 'hidden_details'].iloc[0]
@@ -464,11 +488,12 @@ def process_instance(
     runtime = create_runtime(config)
     call_async_from_sync(runtime.connect)
 
+
+
     try:
         initialize_runtime(runtime, instance)
 
         instruction = get_instruction(instance, metadata)
-
         # Here's how you can run the agent (similar to the `main` function) and get the final task state
         state: State | None = asyncio.run(
             run_controller(
@@ -480,13 +505,18 @@ def process_instance(
                 ],
             )
         )
-
         # if fatal error, throw EvalError to trigger re-run
+
         if (
+
             state.last_error
+
             and 'fatal error during agent execution' in state.last_error
+
             and 'stuck in a loop' not in state.last_error
+
         ):
+
             raise EvalException('Fatal error detected: ' + state.last_error)
 
         # ======= THIS IS SWE-Bench specific =======
@@ -512,11 +542,12 @@ def process_instance(
     if state is None:
         raise ValueError('State should not be None.')
 
-    # NOTE: this is NO LONGER the event stream, but an agent history that includes delegate agent's events
+    # history is now available as a stream of events, rather than list of pairs of (Action, Observation)
+    # for compatibility with the existing output format, we can remake the pairs here
+    # remove when it becomes unnecessary
     histories = [event_to_dict(event) for event in state.history]
     metrics = state.metrics.get() if state.metrics else None
-
-    num_turns = sum(1 for _ in state.history.get_events()) if state else 0
+    # num_turns = sum(1 for _ in state.history.get_events()) if state else 0
     # Save the output
     output = EvalOutput(
         instance_id=instance.instance_id,
@@ -527,7 +558,7 @@ def process_instance(
         history=histories,
         metrics=metrics,
         error=state.last_error if state and state.last_error else None,
-        num_turns=num_turns,
+        # num_turns=num_turns,
     )
     return output
 
@@ -559,7 +590,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--csv_file',
         type=str,
-        default='evaluation/swe_bench/data/sp_summaries_verified_0.csv',
+        default='evaluation/swe_bench/data/full_summaries_verified.csv',
         help='Path to the CSV file containing the dataset',
     )
     parser.add_argument(
@@ -588,7 +619,6 @@ if __name__ == '__main__':
 
     details = {}
     _agent_cls = openhands.agenthub.Agent.get_cls(args.agent_cls)
-
     dataset_descrption = (
         args.dataset.replace('/', '__') + '-' + args.split.replace('/', '__')
     )

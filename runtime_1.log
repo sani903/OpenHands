@@ -1,0 +1,26 @@
+The given hash is equivalent to the current HEAD
+USE_INSTANCE_IMAGE not specified, use default true
+RUN_WITH_BROWSING not specified, use default false
+USE_INSTANCE_IMAGE: true
+RUN_WITH_BROWSING: false
+AGENT: CodeActAgent
+AGENT_VERSION: v2.2
+MODEL_CONFIG: llm.llama
+DATASET: princeton-nlp/SWE-bench
+SPLIT: test
+USE_HINT_TEXT: false
+N_RUNS not specified, use default 1
+EVAL_NOTE: v2.2-no-hint-run_1
+EVAL_LIMIT: 500
+
+[1;31mProvider List: https://docs.litellm.ai/docs/providers[0m
+
+
+[1;31mProvider List: https://docs.litellm.ai/docs/providers[0m
+
+
+[1;31mProvider List: https://docs.litellm.ai/docs/providers[0m
+
+
+[1;31mProvider List: https://docs.litellm.ai/docs/providers[0m
+

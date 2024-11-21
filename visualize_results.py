@@ -27,6 +27,7 @@ def visualise_swe_bench(input_files: list[str]):
         {
             'id': ids,
             'problem_statement': [x[1] for x in data[0]],
+            'resolved': [x[2] for x in data[0]],  # Add resolved status here
             'data': [x[1] for x in data[0]],  # Use problem statement as data
         },
         index=ids,
@@ -50,9 +51,9 @@ def visualise_swe_bench(input_files: list[str]):
         },
         description='Analysis of SWE-bench conversations with enhanced visualization',
         public=False,
-        # metrics=[
-        #     zeno_client.ZenoMetric(name='resolved', type='mean', columns=['resolved']),
-        # ],
+        metrics=[
+            zeno_client.ZenoMetric(name='resolved', type='mean', columns=['resolved']),
+        ],
     )
 
     # Upload dataset
@@ -81,7 +82,7 @@ def visualise_swe_bench(input_files: list[str]):
         df_system = pd.DataFrame(
             {
                 'id': ids,
-                # 'resolved': resolved,
+                'resolved': [x[2] for x in data_entry], 
                 'output': conversations,
             },
             index=ids,

@@ -4,7 +4,7 @@ import os
 import random
 import tempfile
 from typing import Any
-
+import json
 import openai
 import pandas as pd
 import toml
@@ -18,9 +18,12 @@ from evaluation.utils.shared import (
     prepare_dataset,
     reset_logger_for_multiprocessing,
     run_evaluation,
+    update_llm_config_for_completions_logging
 )
+from openhands.events.serialization.event import event_to_dict
 from openhands.controller.state.state import State
 from openhands.core.config import (
+    AgentConfig,
     AppConfig,
     SandboxConfig,
     get_llm_config_arg,
@@ -31,8 +34,13 @@ from openhands.core.main import create_runtime, run_controller
 from openhands.events.action import CmdRunAction, MessageAction
 from openhands.events.observation import CmdOutputObservation, ErrorObservation
 from openhands.events.serialization.event import event_to_dict
-from openhands.runtime.runtime import Runtime
+from openhands.runtime.base import Runtime
 from openhands.runtime.utils.shutdown_listener import sleep_if_should_continue
+from openhands.utils.async_utils import call_async_from_sync
+
+USE_HINT_TEXT = os.environ.get('USE_HINT_TEXT', 'false').lower() == 'true'
+USE_INSTANCE_IMAGE = os.environ.get('USE_INSTANCE_IMAGE', 'false').lower() == 'true'
+RUN_WITH_BROWSING = os.environ.get('RUN_WITH_BROWSING', 'false').lower() == 'true'
 
 client = openai.OpenAI(
     api_key=os.environ['LITELLM_API_KEY'],
@@ -47,15 +55,11 @@ class FakeUser:
 
         Issue: {issue}
 
-        Hidden details (only reveal if specifically asked):
-        {' '.join(hidden_details)}
-
-        Your task is to respond to questions from a coder who is trying to solve your issue. Follow these rules:
-        1. If the coder asks a question that is directly related to the hidden details, provide that information.
-        2. If the question is not related to the hidden details, respond based on the original issue description.
-        3. If you're unsure whether to reveal information, err on the side of caution and don't reveal it.
-        4. Always stay in character as a user reporting an issue, not as an AI assistant.
-        5. Keep your responses concise and to the point.
+        Your task is to respond to questions from a coder who is trying to solve your issue. The coder has a summarized version of the issue you have. Follow these rules:
+        1. If the coder asks a question that is directly related to the information in the issue you have, provide that information.
+        2. Always stay in character as a user reporting an issue, not as an AI assistant.
+        3. Keep your responses concise and to the point.
+        4. The coder has limited turns to solve the issue. Do not interact with the coder beyond 3 turns.
 
         Respond with "I don't have that information" if the question is unrelated or you're unsure.
         """
@@ -63,15 +67,16 @@ class FakeUser:
         self.turns = 0
 
     def generate_reply(self, question):
+        if self.turns > 3:
+            return 'Please continue working on the task. Do NOT ask for more help.'
         self.chat_history.append({'role': 'user', 'content': question})
 
         response = client.chat.completions.create(
-            model='neulab/claude-3-5-sonnet-20240620', messages=self.chat_history
+            model='neulab/gpt-4o-2024-08-06', messages=self.chat_history
         )
-        self.turns += 1
         reply = response.choices[0].message.content
         self.chat_history.append({'role': 'assistant', 'content': reply})
-
+        self.turns += 1
         return reply
 
 
@@ -83,21 +88,30 @@ AGENT_CLS_TO_FAKE_USER_RESPONSE_FN = {
     'CodeActSWEAgent': lambda state: fake_user_response(state, metadata),
 }
 
+def update_instance_results(eval_output_dir, instance_id, output_value, gold_value):
+    results_file = os.path.join(eval_output_dir, 'interactivity_results.json') 
+    # Read existing data or create an empty dictionary
+    if os.path.exists(results_file):
+        with open(results_file, 'r') as f:
+            results = json.load(f)
+    else:
+        results = {}
+    # Update or add the instance results
+    results[instance_id] = {
+        'output': output_value,
+        'gold': gold_value
+    }
+    # Write the updated results back to the file
+    with open(results_file, 'w') as f:
+        json.dump(results, f, indent=2)
 
 def fake_user_response(state: State, metadata: EvalMetadata) -> str:
-    last_agent_message = None
+    last_agent_message = state.get_last_agent_message()
     global fake_user
-    events = list(state.history.get_events())
-    for event in reversed(events):
-        if isinstance(event, MessageAction) and event.source == 'agent':
-            last_agent_message = event.content
-            break
     if last_agent_message:
         response = fake_user.generate_reply(last_agent_message)
         if fake_user.turns > 0:
-            # Save the interaction result
-            with open(os.path.join(metadata.eval_output_dir, 'question.txt'), 'w') as f:
-                f.write('1\n')
+            update_instance_results(metadata.eval_output_dir, state.instance_id, 1, None)
             return '/exit'
         return response
     else:
@@ -118,13 +132,14 @@ def get_instruction(instance: pd.Series, metadata: EvalMetadata):
     workspace_dir_name = _get_swebench_workspace_dir_name(instance)
     # Prepare instruction
     p = random.random()
-    with open(os.path.join(metadata.eval_output_dir, 'test_gold.txt'), 'w') as f:
-        if p < 0.5:
-            f.write(f'{instance.instance_id}: 0\n')
-            issue = instance.original_issue
-        else:
-            f.write(f'{instance.instance_id}: 1\n')
-            issue = instance.problem_statement
+    if p < 0.5:
+        gold_value = 0
+        issue = instance.original_issue
+    else:
+        gold_value = 1
+        issue = instance.problem_statement
+    # Update the instance results file with the gold value
+    update_instance_results(metadata.eval_output_dir, instance.instance_id, None, gold_value)
     if metadata.agent_class == 'CodeActSWEAgent':
         instruction = (
             'We are currently solving the following issue within our repository. Here is the issue text:\n'
@@ -430,6 +445,7 @@ def process_instance(
     reset_logger: bool = True,
 ) -> EvalOutput:
     config = get_config(instance, metadata)
+    update_instance_results(metadata.eval_output_dir, instance.instance_id, 0, None)
     global fake_user
     # df = pd.read_csv("data/fake_user_issues_under_0.csv")
     # issue = df.loc[df['instance_id'] == instance["instance_id"], 'issue'].iloc[0]
@@ -587,8 +603,6 @@ if __name__ == '__main__':
     ):
         for col in ['PASS_TO_PASS', 'FAIL_TO_PASS']:
             instances[col] = instances[col].apply(lambda x: str(x))
-    with open(os.path.join(metadata.eval_output_dir, 'question.txt'), 'w') as f:
-        f.write('0\n')
     run_evaluation(
         instances, metadata, output_file, args.eval_num_workers, process_instance
     )

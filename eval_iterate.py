@@ -2,8 +2,7 @@ import os
 import subprocess
 
 # Directory containing the .jsonl files
-output_dir = 'evaluation/evaluation_outputs/outputs/princeton-nlp__SWE-bench-test/CodeActAgent/claude-3-5-sonnet-20241022_maxiter_30_N_v1.9-no-hint-run_1/'
-# Evaluation script path
+output_dir = '/Users/sanid/Desktop/Interactivity/OpenHands/evaluation/evaluation_outputs/outputs/princeton-nlp__SWE-bench-test/CodeActAgent/deepseek-chat_maxiter_30_N_v2.2-no-hint-run_1/'# Evaluation script path
 # eval_script = './evaluation/swe_bench/scripts/eval_infer.sh'
 
 os.environ['ALLHANDS_API_KEY'] = "ah-73a36a7d-a9f4-4f52-aa85-215abc90a96f"
@@ -16,7 +15,8 @@ def evaluate_files():
     for root, _, files in os.walk(output_dir):
         for file in files:
             print(file)
-            if file.startswith('output') and file.endswith('1.jsonl'):
+            if file == "output.jsonl":
+            # if file.startswith('interact') and file.endswith('.jsonl'):
             #if file.startswith('interact') and file.endswith('output.jsonl'):
                 file_path = os.path.join(root, file)
                 print(f'Evaluating file: {file_path}')

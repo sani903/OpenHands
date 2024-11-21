@@ -11,7 +11,7 @@ MAX_ITER=$5
 NUM_WORKERS=$6
 DATASET=$7
 SPLIT=$8
-
+N_RUNS=$9
 if [ -z "$NUM_WORKERS" ]; then
   NUM_WORKERS=1
   echo "Number of workers not specified, use default $NUM_WORKERS"
@@ -25,7 +25,7 @@ fi
 
 if [ -z "$MAX_ITER" ]; then
   echo "MAX_ITER not specified, use default 30"
-  MAX_ITER=4
+  MAX_ITER=5
 fi
 
 if [ -z "$USE_INSTANCE_IMAGE" ]; then
@@ -33,6 +33,10 @@ if [ -z "$USE_INSTANCE_IMAGE" ]; then
   USE_INSTANCE_IMAGE=true
 fi
 
+if [ -z "$RUN_WITH_BROWSING" ]; then
+  echo "RUN_WITH_BROWSING not specified, use default false"
+  RUN_WITH_BROWSING=false
+fi
 
 if [ -z "$DATASET" ]; then
   echo "DATASET not specified, use default princeton-nlp/SWE-bench_Lite"
@@ -46,6 +50,9 @@ fi
 
 export USE_INSTANCE_IMAGE=$USE_INSTANCE_IMAGE
 echo "USE_INSTANCE_IMAGE: $USE_INSTANCE_IMAGE"
+
+export RUN_WITH_BROWSING=$RUN_WITH_BROWSING
+echo "RUN_WITH_BROWSING: $RUN_WITH_BROWSING"
 
 get_agent_version
 
@@ -66,29 +73,43 @@ if [ "$USE_HINT_TEXT" = false ]; then
   EVAL_NOTE="$EVAL_NOTE-no-hint"
 fi
 
+if [ "$RUN_WITH_BROWSING" = true ]; then
+  EVAL_NOTE="$EVAL_NOTE-with-browsing"
+fi
+
 if [ -n "$EXP_NAME" ]; then
   EVAL_NOTE="$EVAL_NOTE-$EXP_NAME"
 fi
-echo "EVAL_NOTE: $EVAL_NOTE"
+
+function run_eval() {
+  local eval_note=$1
+  COMMAND="poetry run python evaluation/swe_bench/run_infer.py \
+    --agent-cls $AGENT \
+    --llm-config $MODEL_CONFIG \
+    --max-iterations $MAX_ITER \
+    --eval-num-workers $NUM_WORKERS \
+    --eval-note $eval_note \
+    --dataset $DATASET \
+    --split $SPLIT"
+  if [ -n "$EVAL_LIMIT" ]; then
+    echo "EVAL_LIMIT: $EVAL_LIMIT"
+    COMMAND="$COMMAND --eval-n-limit $EVAL_LIMIT"
+  fi
+  # Run the command
+  eval $COMMAND
+}
 
 unset SANDBOX_ENV_GITHUB_TOKEN # prevent the agent from using the github token to push
 
-COMMAND="poetry run python evaluation/swe_bench/test_interactivity.py \
-  --agent-cls $AGENT \
-  --llm-config $MODEL_CONFIG \
-  --max-iterations $MAX_ITER \
-  --max-chars 10000000 \
-  --eval-num-workers $NUM_WORKERS \
-  --eval-note $EVAL_NOTE \
-  --dataset $DATASET \
-  --split $SPLIT"
-
-if [ -n "$EVAL_LIMIT" ]; then
-  echo "EVAL_LIMIT: $EVAL_LIMIT"
-  COMMAND="$COMMAND --eval-n-limit $EVAL_LIMIT"
+if [ -z "$N_RUNS" ]; then
+  N_RUNS=1
+  echo "N_RUNS not specified, use default $N_RUNS"
 fi
 
-# Run the command
-eval $COMMAND
+for i in $(seq 1 $N_RUNS); do
+  current_eval_note="$EVAL_NOTE-run_$i"
+  echo "EVAL_NOTE: $current_eval_note"
+  run_eval $current_eval_note
+done
 
 checkout_original_branch

@@ -15,18 +15,46 @@ def extract_conversation(history):
 def load_data(file_path):
     data_list = []
     directory_name = os.path.dirname(file_path)
+    base_name = os.path.basename(file_path).split('.')[0]  # Get the 'test' part
     print('Directory name: ', directory_name)
-    # with open(os.path.join(directory_name, 'report.json'), 'r') as report_file:
-    #     data = json.load(report_file)
-    #     resolved_ids = data.get('resolved_ids', [])
+    print('Base name: ', base_name)
+    # Construct paths for report.json and .md file
+    report_json_path = os.path.join(directory_name, f"{base_name}.swebench_eval.jsonl")
+    report_md_path = os.path.join(directory_name, f"{base_name}.swebench_eval.md")
+    resolved_map = {}
+    
+    # Try to load report.json first
+    if os.path.exists(report_json_path):
+        with open(report_json_path, 'r') as report_file:
+            for line in report_file:
+                entry = json.loads(line)
+                resolved_map[entry['instance_id']] = entry['test_result']['report']['resolved']
+    elif os.path.exists(report_md_path):
+        # If report.json doesn't exist, parse the markdown file
+        with open(report_md_path, 'r') as md_file:
+            content = md_file.read()
+            resolved_instances = re.findall(r'- \[(.*?)\]', content.split('## Resolved Instances')[1].split('##')[0])
+            for instance in resolved_instances:
+                resolved_map[instance] = True
+    else:
+        print(f"Warning: No report file found for {base_name}")
+
+    # Load conversation data
     with open(file_path, 'r') as file:
         for line in file:
             data = json.loads(line)
-            instance = data.get('instance_id')
+            instance_id = data.get('instance_id')
             problem_statement = data.get('instance', {}).get('problem_statement')
-            # resolved = 1 if instance in resolved_ids else 0
+            
+            # Get resolved status from the report.json or markdown file
+            resolved = 1 if resolved_map.get(instance_id, False) else 0
+            
+            # Extract conversation history
             conversation = extract_conversation(data.get('history', []))
-            data_list.append((instance, problem_statement,0, conversation))
+            
+            # Append instance data with resolved status
+            data_list.append((instance_id, problem_statement, resolved, conversation))
+    
     return data_list
 
 
