@@ -33,7 +33,7 @@ AGENT_CLS_TO_FAKE_USER_RESPONSE_FN = {
 }
 
 AGENT_CLS_TO_INST_SUFFIX = {
-    'CodeActAgent': 'When you think you have completed the request, please run the following command: <execute_bash> exit </execute_bash>.\n'
+    'CodeActAgent': 'When you think you have completed the request, please finish the interaction using the "finish" tool.\n'
 }
 
 
@@ -102,7 +102,8 @@ def process_instance(
         raise ValueError('State should not be None.')
 
     # retrieve the last message from the agent
-    model_answer_raw = state.get_last_agent_message()
+    last_agent_message = state.get_last_agent_message()
+    model_answer_raw = last_agent_message.content if last_agent_message else ''
 
     # attempt to parse model_answer
     ast_eval_fn = instance['ast_eval']

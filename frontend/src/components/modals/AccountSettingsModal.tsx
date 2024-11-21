@@ -1,6 +1,10 @@
 import { useFetcher, useRouteLoaderData } from "@remix-run/react";
 import React from "react";
-import { BaseModalTitle } from "./confirmation-modals/BaseModal";
+import { useTranslation } from "react-i18next";
+import {
+  BaseModalDescription,
+  BaseModalTitle,
+} from "./confirmation-modals/BaseModal";
 import ModalBody from "./ModalBody";
 import ModalButton from "../buttons/ModalButton";
 import FormFieldset from "../form/FormFieldset";
@@ -9,6 +13,7 @@ import { clientLoader } from "#/routes/_oh";
 import { clientAction as settingsClientAction } from "#/routes/settings";
 import { clientAction as loginClientAction } from "#/routes/login";
 import { AvailableLanguages } from "#/i18n";
+import { I18nKey } from "#/i18n/declaration";
 
 interface AccountSettingsModalProps {
   onClose: () => void;
@@ -23,6 +28,7 @@ function AccountSettingsModal({
   gitHubError,
   analyticsConsent,
 }: AccountSettingsModalProps) {
+  const { t } = useTranslation();
   const data = useRouteLoaderData<typeof clientLoader>("routes/_oh");
   const settingsFetcher = useFetcher<typeof settingsClientAction>({
     key: "settings",
@@ -84,15 +90,26 @@ function AccountSettingsModal({
             type="password"
             defaultValue={data?.ghToken ?? ""}
           />
+          <BaseModalDescription>
+            {t(I18nKey.CONNECT_TO_GITHUB_MODAL$GET_YOUR_TOKEN)}{" "}
+            <a
+              href="https://github.com/settings/tokens/new?description=openhands-app&scopes=repo,user,workflow"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="text-[#791B80] underline"
+            >
+              {t(I18nKey.CONNECT_TO_GITHUB_MODAL$HERE)}
+            </a>
+          </BaseModalDescription>
           {gitHubError && (
             <p className="text-danger text-xs">
-              GitHub token is invalid. Please try again.
+              {t(I18nKey.ACCOUNT_SETTINGS_MODAL$GITHUB_TOKEN_INVALID)}
             </p>
           )}
           {data?.ghToken && !gitHubError && (
             <ModalButton
               variant="text-like"
-              text="Disconnect"
+              text={t(I18nKey.ACCOUNT_SETTINGS_MODAL$DISCONNECT)}
               onClick={() => {
                 settingsFetcher.submit(
                   {},
@@ -122,11 +139,11 @@ function AccountSettingsModal({
             }
             type="submit"
             intent="account"
-            text="Save"
+            text={t(I18nKey.ACCOUNT_SETTINGS_MODAL$SAVE)}
             className="bg-[#4465DB]"
           />
           <ModalButton
-            text="Close"
+            text={t(I18nKey.ACCOUNT_SETTINGS_MODAL$CLOSE)}
             onClick={onClose}
             className="bg-[#737373]"
           />
