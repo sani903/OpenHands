@@ -4,7 +4,7 @@ import os
 import random
 import tempfile
 from typing import Any
-import json
+
 import openai
 import pandas as pd
 import toml
@@ -18,12 +18,9 @@ from evaluation.utils.shared import (
     prepare_dataset,
     reset_logger_for_multiprocessing,
     run_evaluation,
-    update_llm_config_for_completions_logging
 )
-from openhands.events.serialization.event import event_to_dict
 from openhands.controller.state.state import State
 from openhands.core.config import (
-    AgentConfig,
     AppConfig,
     SandboxConfig,
     get_llm_config_arg,
@@ -35,8 +32,7 @@ from openhands.events.action import CmdRunAction, MessageAction
 from openhands.events.observation import CmdOutputObservation, ErrorObservation
 from openhands.events.serialization.event import event_to_dict
 from openhands.runtime.base import Runtime
-from openhands.runtime.utils.shutdown_listener import sleep_if_should_continue
-from openhands.utils.async_utils import call_async_from_sync
+from openhands.utils.shutdown_listener import sleep_if_should_continue
 
 USE_HINT_TEXT = os.environ.get('USE_HINT_TEXT', 'false').lower() == 'true'
 USE_INSTANCE_IMAGE = os.environ.get('USE_INSTANCE_IMAGE', 'false').lower() == 'true'
@@ -88,8 +84,9 @@ AGENT_CLS_TO_FAKE_USER_RESPONSE_FN = {
     'CodeActSWEAgent': lambda state: fake_user_response(state, metadata),
 }
 
+
 def update_instance_results(eval_output_dir, instance_id, output_value, gold_value):
-    results_file = os.path.join(eval_output_dir, 'interactivity_results.json') 
+    results_file = os.path.join(eval_output_dir, 'interactivity_results.json')
     # Read existing data or create an empty dictionary
     if os.path.exists(results_file):
         with open(results_file, 'r') as f:
@@ -97,13 +94,11 @@ def update_instance_results(eval_output_dir, instance_id, output_value, gold_val
     else:
         results = {}
     # Update or add the instance results
-    results[instance_id] = {
-        'output': output_value,
-        'gold': gold_value
-    }
+    results[instance_id] = {'output': output_value, 'gold': gold_value}
     # Write the updated results back to the file
     with open(results_file, 'w') as f:
         json.dump(results, f, indent=2)
+
 
 def fake_user_response(state: State, metadata: EvalMetadata) -> str:
     last_agent_message = state.get_last_agent_message()
@@ -111,7 +106,9 @@ def fake_user_response(state: State, metadata: EvalMetadata) -> str:
     if last_agent_message:
         response = fake_user.generate_reply(last_agent_message)
         if fake_user.turns > 0:
-            update_instance_results(metadata.eval_output_dir, state.instance_id, 1, None)
+            update_instance_results(
+                metadata.eval_output_dir, state.instance_id, 1, None
+            )
             return '/exit'
         return response
     else:
@@ -139,7 +136,9 @@ def get_instruction(instance: pd.Series, metadata: EvalMetadata):
         gold_value = 1
         issue = instance.problem_statement
     # Update the instance results file with the gold value
-    update_instance_results(metadata.eval_output_dir, instance.instance_id, None, gold_value)
+    update_instance_results(
+        metadata.eval_output_dir, instance.instance_id, None, gold_value
+    )
     if metadata.agent_class == 'CodeActSWEAgent':
         instruction = (
             'We are currently solving the following issue within our repository. Here is the issue text:\n'
@@ -218,6 +217,7 @@ def get_config(
             api_key=os.environ.get('ALLHANDS_API_KEY', None),
             remote_runtime_api_url=os.environ.get('SANDBOX_REMOTE_RUNTIME_API_URL'),
             keep_remote_runtime_alive=False,
+            remote_runtime_init_timeout=3600,
         ),
         # do not mount workspace
         workspace_base=None,
@@ -604,5 +604,10 @@ if __name__ == '__main__':
         for col in ['PASS_TO_PASS', 'FAIL_TO_PASS']:
             instances[col] = instances[col].apply(lambda x: str(x))
     run_evaluation(
-        instances, metadata, output_file, args.eval_num_workers, process_instance
+        instances,
+        metadata,
+        output_file,
+        args.eval_num_workers,
+        process_instance,
+        timeout_seconds=120 * 60,
     )

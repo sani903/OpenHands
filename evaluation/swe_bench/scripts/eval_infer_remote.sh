@@ -23,7 +23,7 @@ fi
 
 if [ -z "$NUM_WORKERS" ]; then
   echo "NUM_WORKERS not specified, use default 1"
-  NUM_WORKERS=4
+  NUM_WORKERS=16
 fi
 
 echo "... Evaluating on $INPUT_FILE ..."

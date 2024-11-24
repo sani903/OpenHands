@@ -3,7 +3,7 @@ import json
 import os
 import tempfile
 from typing import Any
-from openhands.events.serialization.event import event_to_dict
+
 import openai
 import pandas as pd
 import toml
@@ -11,6 +11,7 @@ import toml
 import openhands.agenthub
 from evaluation.swe_bench.prompt import CODEACT_SWE_PROMPT
 from evaluation.utils.shared import (
+    EvalException,
     EvalMetadata,
     EvalOutput,
     make_metadata,
@@ -27,14 +28,15 @@ from openhands.core.config import (
     get_llm_config_arg,
     get_parser,
 )
-from openhands.events.serialization.event import event_to_dict
 from openhands.core.logger import openhands_logger as logger
 from openhands.core.main import create_runtime, run_controller
 from openhands.events.action import CmdRunAction, MessageAction
 from openhands.events.observation import CmdOutputObservation, ErrorObservation
+from openhands.events.serialization.event import event_to_dict
 from openhands.runtime.base import Runtime
-from openhands.runtime.utils.shutdown_listener import sleep_if_should_continue
 from openhands.utils.async_utils import call_async_from_sync
+from openhands.utils.shutdown_listener import sleep_if_should_continue
+
 USE_HINT_TEXT = os.environ.get('USE_HINT_TEXT', 'false').lower() == 'true'
 USE_INSTANCE_IMAGE = os.environ.get('USE_INSTANCE_IMAGE', 'false').lower() == 'true'
 RUN_WITH_BROWSING = os.environ.get('RUN_WITH_BROWSING', 'false').lower() == 'true'
@@ -211,6 +213,7 @@ def get_config(
             api_key=os.environ.get('ALLHANDS_API_KEY', None),
             remote_runtime_api_url=os.environ.get('SANDBOX_REMOTE_RUNTIME_API_URL'),
             keep_remote_runtime_alive=False,
+            remote_runtime_init_timeout=3600,
         ),
         # do not mount workspace
         workspace_base=None,
@@ -340,7 +343,7 @@ def initialize_runtime(
         assert (
             obs.exit_code == 0
         ), f'Failed to source /swe_util/swe_entry.sh: {obs.content}'
-    try: 
+    try:
         action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
         # action = CmdRunAction(command='cd /workspace/')
         action.timeout = 600
@@ -348,7 +351,7 @@ def initialize_runtime(
         obs = runtime.run_action(action)
         logger.info(obs, extra={'msg_type': 'OBSERVATION'})
         assert obs.exit_code == 0
-    except:
+    except Exception:
         action = CmdRunAction(command='cd /workspace/')
         action.timeout = 600
         logger.info(action, extra={'msg_type': 'ACTION'})
@@ -407,7 +410,7 @@ def complete_runtime(
     logger.info('-' * 30)
     obs: CmdOutputObservation
     workspace_dir_name = _get_swebench_workspace_dir_name(instance)
-    try: 
+    try:
         action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
         # action = CmdRunAction(command='cd /workspace/')
         action.timeout = 600
@@ -415,7 +418,7 @@ def complete_runtime(
         obs = runtime.run_action(action)
         logger.info(obs, extra={'msg_type': 'OBSERVATION'})
         assert obs.exit_code == 0
-    except:
+    except Exception:
         action = CmdRunAction(command='cd /workspace/')
         action.timeout = 600
         logger.info(action, extra={'msg_type': 'ACTION'})
@@ -510,8 +513,6 @@ def process_instance(
     runtime = create_runtime(config)
     call_async_from_sync(runtime.connect)
 
-
-
     try:
         initialize_runtime(runtime, instance)
 
@@ -530,15 +531,10 @@ def process_instance(
         # if fatal error, throw EvalError to trigger re-run
 
         if (
-
             state.last_error
-
             and 'fatal error during agent execution' in state.last_error
-
             and 'stuck in a loop' not in state.last_error
-
         ):
-
             raise EvalException('Fatal error detected: ' + state.last_error)
 
         # ======= THIS IS SWE-Bench specific =======
@@ -664,5 +660,10 @@ if __name__ == '__main__':
             instances[col] = instances[col].apply(lambda x: str(x))
 
     run_evaluation(
-        instances, metadata, output_file, args.eval_num_workers, process_instance
+        instances,
+        metadata,
+        output_file,
+        args.eval_num_workers,
+        process_instance,
+        timeout_seconds=120 * 60,
     )

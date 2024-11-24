@@ -11,6 +11,7 @@ import toml
 import openhands.agenthub
 from evaluation.swe_bench.prompt import CODEACT_SWE_PROMPT
 from evaluation.utils.shared import (
+    EvalException,
     EvalMetadata,
     EvalOutput,
     make_metadata,
@@ -19,7 +20,6 @@ from evaluation.utils.shared import (
     run_evaluation,
     update_llm_config_for_completions_logging,
 )
-from openhands.events.serialization.event import event_to_dict
 from openhands.controller.state.state import State
 from openhands.core.config import (
     AgentConfig,
@@ -35,11 +35,8 @@ from openhands.events.observation import CmdOutputObservation, ErrorObservation
 from openhands.events.serialization.event import event_to_dict
 from openhands.runtime.base import Runtime
 from openhands.utils.async_utils import call_async_from_sync
-<<<<<<< HEAD
-=======
 from openhands.utils.shutdown_listener import sleep_if_should_continue
 
->>>>>>> upstream/main
 USE_HINT_TEXT = os.environ.get('USE_HINT_TEXT', 'false').lower() == 'true'
 USE_INSTANCE_IMAGE = os.environ.get('USE_INSTANCE_IMAGE', 'false').lower() == 'true'
 RUN_WITH_BROWSING = os.environ.get('RUN_WITH_BROWSING', 'false').lower() == 'true'
@@ -51,60 +48,36 @@ client = openai.OpenAI(
 
 
 class FakeUser:
-    # def __init__(self, issue, hidden_details):
-    #     self.system_message = f"""
-    #     You are a GitHub user reporting an issue. Here are the details of your issue and environment:
-
-    #     Issue: {issue}
-
-    #     Hidden details (only reveal if specifically asked):
-    #     {' '.join(hidden_details)}
-
-    #     Your task is to respond to questions from a coder who is trying to solve your issue. Follow these rules:
-    #     1. If the coder asks a question that is directly related to the hidden details, provide that information.
-    #     2. If the question is not related to the hidden details, respond based on the original issue description.
-    #     3. If you're unsure whether to reveal information, err on the side of caution and don't reveal it.
-    #     4. Always stay in character as a user reporting an issue, not as an AI assistant.
-    #     5. Keep your responses concise and to the point.
-    #     6. The coder has limited turns to solve the issue. Do not interact with the coder beyond 3 turns.
-
-    #     Respond with "I don't have that information" if the question is unrelated or you're unsure.
-    #     """
-    #     self.chat_history = [{'role': 'system', 'content': self.system_message}]
-    #     self.turns = 0
-    def __init__(self, issue, hints, files):
+    def __init__(self, issue, hidden_details):
         self.system_message = f"""
         You are a GitHub user reporting an issue. Here are the details of your issue and environment:
 
         Issue: {issue}
 
-        Hints: {hints}
+        Hidden details (only reveal if specifically asked):
+        {' '.join(hidden_details)}
 
-        Files relative to your current directory: {files}
-
-        Your task is to respond to questions from a coder who is trying to solve your issue. The coder has a summarized version of the issue you have. Follow these rules:
-        1. If the coder asks a question that is directly related to the information in the issue you have, provide that information.
-        2. Always stay in character as a user reporting an issue, not as an AI assistant.
-        3. Keep your responses concise and to the point.
-        4. The coder has limited turns to solve the issue. Do not interact with the coder beyond 3 turns.
+        Your task is to respond to questions from a coder who is trying to solve your issue. Follow these rules:
+        1. If the coder asks a question that is directly related to the hidden details, provide that information.
+        2. If the question is not related to the hidden details, respond based on the original issue description.
+        3. If you're unsure whether to reveal information, err on the side of caution and don't reveal it.
+        4. Always stay in character as a user reporting an issue, not as an AI assistant.
+        5. Keep your responses concise and to the point.
 
         Respond with "I don't have that information" if the question is unrelated or you're unsure.
         """
         self.chat_history = [{'role': 'system', 'content': self.system_message}]
-        self.turns = 0
 
     def generate_reply(self, question):
-        if self.turns > 3:
-            return 'Please continue working on the task. Do NOT ask for more help.'
         self.chat_history.append({'role': 'user', 'content': question})
 
         response = client.chat.completions.create(
-            model='neulab/gpt-4o-2024-08-06', messages=self.chat_history
+            model='neulab/claude-3-5-sonnet-20240620', messages=self.chat_history
         )
 
         reply = response.choices[0].message.content
         self.chat_history.append({'role': 'assistant', 'content': reply})
-        self.turns+=1
+
         return reply
 
 
@@ -118,12 +91,17 @@ AGENT_CLS_TO_FAKE_USER_RESPONSE_FN = {
 
 
 def fake_user_response(state: State) -> str:
-    last_agent_message = state.get_last_agent_message()
+    #    last_agent_message = None
+    #    events = list(state.history.get_events())
+    #    for event in reversed(events):
+    #        if isinstance(event, MessageAction) and event.source == 'agent':
+    #            last_agent_message = event.content
+    #            break
 
-    if last_agent_message:
-        return fake_user.generate_reply(last_agent_message)
-    else:
-        return 'Please continue working on the task.'
+    #    if last_agent_message:
+    #        return fake_user.generate_reply(last_agent_message)
+    #    else:
+    return 'Please continue working on the task.'
 
 
 AGENT_CLS_TO_INST_SUFFIX = {
@@ -152,6 +130,8 @@ def get_instruction(instance: pd.Series, metadata: EvalMetadata):
             )
         instruction += CODEACT_SWE_PROMPT.format(workspace_dir_name=workspace_dir_name)
     else:
+        # Instruction based on Anthropic's official trajectory
+        # https://github.com/eschluntz/swe-bench-experiments/tree/main/evaluation/verified/20241022_tools_claude-3-5-sonnet-updated/trajs
         instruction = (
             '<uploaded_files>\n'
             f'/workspace/{workspace_dir_name}\n'
@@ -163,11 +143,8 @@ def get_instruction(instance: pd.Series, metadata: EvalMetadata):
             'Can you help me implement the necessary changes to the repository so that the requirements specified in the <pr_description> are met?\n'
             "I've already taken care of all changes to any of the test files described in the <pr_description>. This means you DON'T have to modify the testing logic or any of the tests in any way!\n"
             'Your task is to make the minimal changes to non-tests files in the /repo directory to ensure the <pr_description> is satisfied.\n'
-            'I have not provided all the necessary details about the issue and I have some hidden details that are helpful. Please ask me specifc questions using non-code commands to gather the relevant information that I have to help you solve the issue. Ensure you have all the details you require to solve the issue.\n'
-            'You have a limited number of turns. Do NOT interact with me more than three times so as to maximize the number of turns you have to work on the solution.\n'
             'Follow these steps to resolve the issue:\n'
-            '1. As a first step, look at the issue and ask me questions to get all the necessary details about the issue. You can also ask me questions if you run into a problem in later steps.\n'
-            '2. Then, it might be a good idea to explore the repo to familiarize yourself with its structure.\n'
+            '1. As a first step, it might be a good idea to explore the repo to familiarize yourself with its structure.\n'
             '2. Create a script to reproduce the error and execute it with `python <filename.py>` using the BashTool, to confirm the error\n'
             '3. Edit the sourcecode of the repo to resolve the issue\n'
             '4. Rerun your reproduce script and confirm that the error is fixed!\n'
@@ -182,8 +159,8 @@ def get_instruction(instance: pd.Series, metadata: EvalMetadata):
             '</IMPORTANT!>\n'
         )
     return instruction
-       
-       
+
+
 # TODO: migrate all swe-bench docker to ghcr.io/openhands
 DOCKER_IMAGE_PREFIX = os.environ.get('EVAL_DOCKER_IMAGE_PREFIX', 'docker.io/xingyaoww/')
 logger.info(f'Using docker image prefix: {DOCKER_IMAGE_PREFIX}')
@@ -250,6 +227,15 @@ def get_config(
     return config
 
 
+def _get_alt_workspace_dir_name(instance: pd.Series) -> str:
+    s = f'{instance.repo}__{instance.version}'.replace('/', '__')
+    dot_index = s.rfind('.')
+    if dot_index != -1:
+        return s[:dot_index]
+    else:
+        return s
+
+
 def initialize_runtime(
     runtime: Runtime,
     instance: pd.Series,  # this argument is not required
@@ -261,7 +247,7 @@ def initialize_runtime(
     logger.info('-' * 30)
     logger.info('BEGIN Runtime Initialization Fn')
     logger.info('-' * 30)
-    # workspace_dir_name = _get_swebench_workspace_dir_name(instance)
+    workspace_dir_name = _get_swebench_workspace_dir_name(instance)
     obs: CmdOutputObservation
 
     # Set instance id
@@ -351,7 +337,7 @@ def initialize_runtime(
         assert (
             obs.exit_code == 0
         ), f'Failed to source /swe_util/swe_entry.sh: {obs.content}'
-    try: 
+    try:
         action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
         # action = CmdRunAction(command='cd /workspace/')
         action.timeout = 600
@@ -359,7 +345,7 @@ def initialize_runtime(
         obs = runtime.run_action(action)
         logger.info(obs, extra={'msg_type': 'OBSERVATION'})
         assert obs.exit_code == 0
-    except:
+    except Exception:
         action = CmdRunAction(command='cd /workspace/')
         action.timeout = 600
         logger.info(action, extra={'msg_type': 'ACTION'})
@@ -413,7 +399,7 @@ def complete_runtime(
     logger.info('-' * 30)
     obs: CmdOutputObservation
     workspace_dir_name = _get_swebench_workspace_dir_name(instance)
-    try: 
+    try:
         action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
         # action = CmdRunAction(command='cd /workspace/')
         action.timeout = 600
@@ -421,7 +407,7 @@ def complete_runtime(
         obs = runtime.run_action(action)
         logger.info(obs, extra={'msg_type': 'OBSERVATION'})
         assert obs.exit_code == 0
-    except:
+    except Exception:
         action = CmdRunAction(command='cd /workspace/')
         action.timeout = 600
         logger.info(action, extra={'msg_type': 'ACTION'})
@@ -490,18 +476,11 @@ def process_instance(
     reset_logger: bool = True,
 ) -> EvalOutput:
     config = get_config(instance, metadata)
-    global fake_user
-    original_issue = instance.original_issue
-    # hidden_details_merged = instance.hidden_details
-    # print(f"""
-    # These are the hidden_details: {hidden_details_merged}
-    # """)
-    # logger.info(f'These are the hidden_details: {hidden_details_merged}')
-    # delimiter = '|||'
-    # hidden_details_split = hidden_details_merged.split(delimiter)
-    issue = str(original_issue)
-    # fake_user = FakeUser(issue=issue, hidden_details=hidden_details_split)
-    fake_user = FakeUser(issue=issue, hints=instance.hints_text, files=instance.files)
+    # global fake_user
+    # df = pd.read_csv("data/fake_user_issues_under_0.csv")
+    # issue = df.loc[df['instance_id'] == instance["instance_id"], 'issue'].iloc[0]
+    # hidden_details_merged = df.loc[df['instance_id'] == instance["instance_id"], 'hidden_details'].iloc[0]
+    # fake_user = FakeUser(issue=original_issue, hidden_details=hidden_details_split)
     # Setup the logger properly, so you can run multi-processing to parallelize the evaluation
     if reset_logger:
         log_dir = os.path.join(metadata.eval_output_dir, 'infer_logs')
@@ -512,13 +491,10 @@ def process_instance(
     runtime = create_runtime(config)
     call_async_from_sync(runtime.connect)
 
-
-
     try:
         initialize_runtime(runtime, instance)
 
         instruction = get_instruction(instance, metadata)
-
         # Here's how you can run the agent (similar to the `main` function) and get the final task state
         state: State | None = asyncio.run(
             run_controller(
@@ -533,16 +509,12 @@ def process_instance(
         # if fatal error, throw EvalError to trigger re-run
 
         if (
-
             state.last_error
-
             and 'fatal error during agent execution' in state.last_error
-
             and 'stuck in a loop' not in state.last_error
-
         ):
-
             raise EvalException('Fatal error detected: ' + state.last_error)
+
         # ======= THIS IS SWE-Bench specific =======
         # Get git patch
         return_val = complete_runtime(runtime, instance)
@@ -566,6 +538,9 @@ def process_instance(
     if state is None:
         raise ValueError('State should not be None.')
 
+    # history is now available as a stream of events, rather than list of pairs of (Action, Observation)
+    # for compatibility with the existing output format, we can remake the pairs here
+    # remove when it becomes unnecessary
     histories = [event_to_dict(event) for event in state.history]
     metrics = state.metrics.get() if state.metrics else None
     # num_turns = sum(1 for _ in state.history.get_events()) if state else 0
@@ -668,5 +643,5 @@ if __name__ == '__main__':
         output_file,
         args.eval_num_workers,
         process_instance,
-        timeout_seconds=120 * 60,  # 2 hour PER instance should be more than enough
+        timeout_seconds=120 * 60,
     )
