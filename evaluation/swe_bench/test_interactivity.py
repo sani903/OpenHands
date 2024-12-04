@@ -12,15 +12,18 @@ import toml
 import openhands.agenthub
 from evaluation.swe_bench.prompt import CODEACT_SWE_PROMPT
 from evaluation.utils.shared import (
+    EvalException,
     EvalMetadata,
     EvalOutput,
     make_metadata,
     prepare_dataset,
     reset_logger_for_multiprocessing,
     run_evaluation,
+    update_llm_config_for_completions_logging,
 )
 from openhands.controller.state.state import State
 from openhands.core.config import (
+    AgentConfig,
     AppConfig,
     SandboxConfig,
     get_llm_config_arg,
@@ -32,6 +35,7 @@ from openhands.events.action import CmdRunAction, MessageAction
 from openhands.events.observation import CmdOutputObservation, ErrorObservation
 from openhands.events.serialization.event import event_to_dict
 from openhands.runtime.base import Runtime
+from openhands.utils.async_utils import call_async_from_sync
 from openhands.utils.shutdown_listener import sleep_if_should_continue
 
 USE_HINT_TEXT = os.environ.get('USE_HINT_TEXT', 'false').lower() == 'true'
@@ -45,7 +49,7 @@ client = openai.OpenAI(
 
 
 class FakeUser:
-    def __init__(self, issue, hidden_details):
+    def __init__(self, issue):
         self.system_message = f"""
         You are a GitHub user reporting an issue. Here are the details of your issue and environment:
 
@@ -63,51 +67,57 @@ class FakeUser:
         self.turns = 0
 
     def generate_reply(self, question):
-        if self.turns > 3:
-            return 'Please continue working on the task. Do NOT ask for more help.'
-        self.chat_history.append({'role': 'user', 'content': question})
+        # if self.turns > 3:
+        #     return 'Please continue working on the task. Do NOT ask for more help.'
+        # self.chat_history.append({'role': 'user', 'content': question.content})
 
-        response = client.chat.completions.create(
-            model='neulab/gpt-4o-2024-08-06', messages=self.chat_history
-        )
-        reply = response.choices[0].message.content
-        self.chat_history.append({'role': 'assistant', 'content': reply})
+        # response = client.chat.completions.create(
+        #     model='neulab/gpt-4o-2024-08-06', messages=self.chat_history
+        # )
+        # reply = response.choices[0].message.content
+        # self.chat_history.append({'role': 'assistant', 'content': reply})
         self.turns += 1
-        return reply
+        return ''
 
 
 USE_HINT_TEXT = os.environ.get('USE_HINT_TEXT', 'false').lower() == 'true'
 USE_INSTANCE_IMAGE = os.environ.get('USE_INSTANCE_IMAGE', 'false').lower() == 'true'
 
-AGENT_CLS_TO_FAKE_USER_RESPONSE_FN = {
-    'CodeActAgent': lambda state: fake_user_response(state, metadata),
-    'CodeActSWEAgent': lambda state: fake_user_response(state, metadata),
-}
-
 
 def update_instance_results(eval_output_dir, instance_id, output_value, gold_value):
-    results_file = os.path.join(eval_output_dir, 'interactivity_results.json')
+    results_file = os.path.join(
+        eval_output_dir, 'interactivity', 'interactivity_results.json'
+    )
     # Read existing data or create an empty dictionary
+    os.makedirs(os.path.dirname(results_file), exist_ok=True)
     if os.path.exists(results_file):
         with open(results_file, 'r') as f:
             results = json.load(f)
     else:
         results = {}
     # Update or add the instance results
-    results[instance_id] = {'output': output_value, 'gold': gold_value}
+    if instance_id in results:
+        if gold_value is None:
+            results[instance_id]['output'] = output_value
+        elif output_value is None:
+            results[instance_id]['gold'] = gold_value
+        else:
+            results[instance_id] = {'output': output_value, 'gold': gold_value}
+    else:
+        results[instance_id] = {'output': output_value, 'gold': gold_value}
     # Write the updated results back to the file
     with open(results_file, 'w') as f:
         json.dump(results, f, indent=2)
 
 
-def fake_user_response(state: State, metadata: EvalMetadata) -> str:
+def fake_user_response(state: State, metadata: EvalMetadata, instance) -> str:
     last_agent_message = state.get_last_agent_message()
     global fake_user
     if last_agent_message:
         response = fake_user.generate_reply(last_agent_message)
         if fake_user.turns > 0:
             update_instance_results(
-                metadata.eval_output_dir, state.instance_id, 1, None
+                metadata.eval_output_dir, instance.instance_id, 1, None
             )
             return '/exit'
         return response
@@ -152,23 +162,34 @@ def get_instruction(instance: pd.Series, metadata: EvalMetadata):
             )
         instruction += CODEACT_SWE_PROMPT.format(workspace_dir_name=workspace_dir_name)
     else:
-        # Testing general agents
         instruction = (
-            f'Please fix the following issue for the repository in /workspace/{workspace_dir_name}.\n'
-            'Environment has been set up for you to start working. You may assume all necessary tools are installed.\n\n'
-            '# Problem Statement\n'
-            f'{issue}\n\n'
-        )
-        if USE_HINT_TEXT and instance.hints_text:
-            instruction += f'# Hints\n{instance.hints_text}\n\n'
-        instruction += (
+            '<uploaded_files>\n'
+            f'/workspace/{workspace_dir_name}\n'
+            '</uploaded_files>\n'
+            f"I've uploaded a python code repository in the directory {workspace_dir_name}. Consider the following PR description:\n\n"
+            f'<pr_description>\n'
+            f'{instance.problem_statement}\n'
+            '</pr_description>\n\n'
+            'Can you help me implement the necessary changes to the repository so that the requirements specified in the <pr_description> are met?\n'
+            "I've already taken care of all changes to any of the test files described in the <pr_description>. This means you DON'T have to modify the testing logic or any of the tests in any way!\n"
+            'Your task is to make the minimal changes to non-tests files in the /repo directory to ensure the <pr_description> is satisfied.\n'
             'Your success depends on having all relevant details to solve the issue effectively. Whenever you encounter unclear or missing information, proactively ask questions to fill those gaps. Even minor ambiguities can affect the outcome, so always prioritize clarifying questions. Avoid questions only when you are 100% certain no further clarification is needed.\n'
-            'You should NOT modify any existing test case files. If needed, you can add new test cases in a NEW file to reproduce the issue.\n'
-            'You SHOULD INCLUDE PROPER INDENTATION in your edit commands.\n'
+            'Follow these steps to resolve the issue:\n'
+            '1. As a first step, look at the issue and ask me questions if you need any clarifications or have any doubts.\n'
+            '2. Then, it might be a good idea to explore the repo to familiarize yourself with its structure.\n'
+            '2. Create a script to reproduce the error and execute it with `python <filename.py>` using the BashTool, to confirm the error\n'
+            '3. Edit the sourcecode of the repo to resolve the issue\n'
+            '4. Rerun your reproduce script and confirm that the error is fixed!\n'
+            '5. Think about edgecases and make sure your fix handles them as well\n'
+            "Your thinking should be thorough and so it's fine if it's very long.\n"
         )
 
-    # NOTE: You can actually set slightly different instruction for different agents
-    instruction += AGENT_CLS_TO_INST_SUFFIX[metadata.agent_class]
+    if RUN_WITH_BROWSING:
+        instruction += (
+            '<IMPORTANT!>\n'
+            'You SHOULD NEVER attempt to browse the web. '
+            '</IMPORTANT!>\n'
+        )
     return instruction
 
 
@@ -205,7 +226,6 @@ def get_config(
     config = AppConfig(
         default_agent=metadata.agent_class,
         run_as_openhands=False,
-        max_budget_per_task=4,
         max_iterations=metadata.max_iterations,
         runtime=os.environ.get('RUNTIME', 'eventstream'),
         sandbox=SandboxConfig(
@@ -214,16 +234,28 @@ def get_config(
             use_host_network=False,
             # large enough timeout, since some testcases take very long to run
             timeout=300,
+            # Add platform to the sandbox config to solve issue 4401
+            platform='linux/amd64',
             api_key=os.environ.get('ALLHANDS_API_KEY', None),
             remote_runtime_api_url=os.environ.get('SANDBOX_REMOTE_RUNTIME_API_URL'),
-            keep_remote_runtime_alive=False,
+            keep_runtime_alive=False,
             remote_runtime_init_timeout=3600,
         ),
         # do not mount workspace
         workspace_base=None,
         workspace_mount_path=None,
     )
-    config.set_llm_config(metadata.llm_config)
+    config.set_llm_config(
+        update_llm_config_for_completions_logging(
+            metadata.llm_config, metadata.eval_output_dir, instance['instance_id']
+        )
+    )
+    agent_config = AgentConfig(
+        codeact_enable_jupyter=False,
+        codeact_enable_browsing=RUN_WITH_BROWSING,
+        codeact_enable_llm_editor=False,
+    )
+    config.set_agent_config(agent_config)
     return config
 
 
@@ -238,7 +270,7 @@ def initialize_runtime(
     logger.info('-' * 30)
     logger.info('BEGIN Runtime Initialization Fn')
     logger.info('-' * 30)
-    # workspace_dir_name = _get_swebench_workspace_dir_name(instance)
+    workspace_dir_name = _get_swebench_workspace_dir_name(instance)
     obs: CmdOutputObservation
 
     # Set instance id
@@ -330,22 +362,31 @@ def initialize_runtime(
             obs.exit_code == 0
         ), f'Failed to source /swe_util/swe_entry.sh: {obs.content}'
 
-    action = CmdRunAction(command='cd /workspace/')
-    action.timeout = 600
-    logger.info(action, extra={'msg_type': 'ACTION'})
-    obs = runtime.run_action(action)
-    logger.info(obs, extra={'msg_type': 'OBSERVATION'})
-    action = CmdRunAction(command='cd "$(ls | head -n 1)"')
-    action.timeout = 600
-    logger.info(action, extra={'msg_type': 'ACTION'})
-    obs = runtime.run_action(action)
-    logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+    try:
+        action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
+        # action = CmdRunAction(command='cd /workspace/')
+        action.timeout = 600
+        logger.info(action, extra={'msg_type': 'ACTION'})
+        obs = runtime.run_action(action)
+        logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+        assert obs.exit_code == 0
+    except Exception:
+        action = CmdRunAction(command='cd /workspace/')
+        action.timeout = 600
+        logger.info(action, extra={'msg_type': 'ACTION'})
+        obs = runtime.run_action(action)
+        logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+        assert obs.exit_code == 0
+        action = CmdRunAction(command='cd "$(ls | head -n 1)"')
+        action.timeout = 600
+        logger.info(action, extra={'msg_type': 'ACTION'})
+        obs = runtime.run_action(action)
+        logger.info(obs, extra={'msg_type': 'OBSERVATION'})
     if obs.exit_code != 0:
         logger.error(f'Command failed with exit code {obs.exit_code}: {obs.content}')
         # Handle the error appropriately, maybe by raising a custom exception
         raise RuntimeError(f'Failed to initialize runtime: {obs.content}')
     assert obs.exit_code == 0
-
     action = CmdRunAction(command='git reset --hard')
     action.timeout = 600
     logger.info(action, extra={'msg_type': 'ACTION'})
@@ -381,17 +422,31 @@ def complete_runtime(
     logger.info('BEGIN Runtime Completion Fn')
     logger.info('-' * 30)
     obs: CmdOutputObservation
-    # workspace_dir_name = _get_swebench_workspace_dir_name(instance)
-    action = CmdRunAction(command='cd /workspace/')
-    action.timeout = 600
-    logger.info(action, extra={'msg_type': 'ACTION'})
-    obs = runtime.run_action(action)
-    logger.info(obs, extra={'msg_type': 'OBSERVATION'})
-    action = CmdRunAction(command='cd "$(ls | head -n 1)"')
-    action.timeout = 600
-    logger.info(action, extra={'msg_type': 'ACTION'})
-    obs = runtime.run_action(action)
-    logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+    workspace_dir_name = _get_swebench_workspace_dir_name(instance)
+    try:
+        action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
+        # action = CmdRunAction(command='cd /workspace/')
+        action.timeout = 600
+        logger.info(action, extra={'msg_type': 'ACTION'})
+        obs = runtime.run_action(action)
+        logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+        assert obs.exit_code == 0
+    except Exception:
+        action = CmdRunAction(command='cd /workspace/')
+        action.timeout = 600
+        logger.info(action, extra={'msg_type': 'ACTION'})
+        obs = runtime.run_action(action)
+        logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+        assert obs.exit_code == 0
+        action = CmdRunAction(command='cd "$(ls | head -n 1)"')
+        action.timeout = 600
+        logger.info(action, extra={'msg_type': 'ACTION'})
+        obs = runtime.run_action(action)
+        logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+    if obs.exit_code != 0:
+        logger.error(f'Command failed with exit code {obs.exit_code}: {obs.content}')
+        # Handle the error appropriately, maybe by raising a custom exception
+        raise RuntimeError(f'Failed to initialize runtime: {obs.content}')
     assert obs.exit_code == 0
 
     action = CmdRunAction(command='git config --global core.pager ""')
@@ -447,18 +502,26 @@ def process_instance(
     config = get_config(instance, metadata)
     update_instance_results(metadata.eval_output_dir, instance.instance_id, 0, None)
     global fake_user
+    AGENT_CLS_TO_FAKE_USER_RESPONSE_FN = {
+        'CodeActAgent': lambda state,
+        metadata=metadata,
+        instance=instance: fake_user_response(state, metadata, instance),
+        'CodeActSWEAgent': lambda state,
+        metadata=metadata,
+        instance=instance: fake_user_response(state, metadata, instance),
+    }
     # df = pd.read_csv("data/fake_user_issues_under_0.csv")
     # issue = df.loc[df['instance_id'] == instance["instance_id"], 'issue'].iloc[0]
     # hidden_details_merged = df.loc[df['instance_id'] == instance["instance_id"], 'hidden_details'].iloc[0]
     original_issue = instance.original_issue
-    hidden_details_merged = instance.hidden_details
-    print(f"""
-    These are the hidden_details: {hidden_details_merged}
-    """)
-    logger.info(f'These are the hidden_details: {hidden_details_merged}')
-    delimiter = '|||'
-    hidden_details_split = hidden_details_merged.split(delimiter)
-    fake_user = FakeUser(issue=original_issue, hidden_details=hidden_details_split)
+    # hidden_details_merged = instance.hidden_details
+    # print(f"""
+    # These are the hidden_details: {hidden_details_merged}
+    # """)
+    # logger.info(f'These are the hidden_details: {hidden_details_merged}')
+    # delimiter = '|||'
+    # hidden_details_split = hidden_details_merged.split(delimiter)
+    fake_user = FakeUser(issue=original_issue)
     # Setup the logger properly, so you can run multi-processing to parallelize the evaluation
     if reset_logger:
         log_dir = os.path.join(metadata.eval_output_dir, 'infer_logs')
@@ -466,7 +529,7 @@ def process_instance(
     else:
         logger.info(f'Starting evaluation for instance {instance.instance_id}.')
     runtime = create_runtime(config)
-
+    call_async_from_sync(runtime.connect)
     try:
         initialize_runtime(runtime, instance)
 
@@ -483,7 +546,14 @@ def process_instance(
                 ],
             )
         )
+        # if fatal error, throw EvalError to trigger re-run
 
+        if (
+            state.last_error
+            and 'fatal error during agent execution' in state.last_error
+            and 'stuck in a loop' not in state.last_error
+        ):
+            raise EvalException('Fatal error detected: ' + state.last_error)
         # ======= THIS IS SWE-Bench specific =======
         # Get git patch
         return_val = complete_runtime(runtime, instance)
@@ -507,7 +577,7 @@ def process_instance(
     if state is None:
         raise ValueError('State should not be None.')
 
-    histories = [event_to_dict(event) for event in state.history.get_events()]
+    histories = [event_to_dict(event) for event in state.history]
     metrics = state.metrics.get() if state.metrics else None
 
     # Save the output
@@ -519,8 +589,8 @@ def process_instance(
         metadata=metadata,
         history=histories,
         metrics=metrics,
-        llm_completions=state.extra_data.get('llm_completions', []),
         error=state.last_error if state and state.last_error else None,
+        # num_turns=num_turns,
     )
     return output
 
@@ -552,7 +622,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--csv_file',
         type=str,
-        default='evaluation/swe_bench/data/transformed_verified_underspecified_0.csv',
+        default='evaluation/swe_bench/data/full_summaries_verified.xlsx',
         help='Path to the CSV file containing the dataset',
     )
     parser.add_argument(
@@ -567,27 +637,26 @@ if __name__ == '__main__':
     # so we don't need to manage file uploading to OpenHands's repo
     #    dataset = load_dataset(args.dataset, split=args.split)
     csv_filepath = args.csv_file
-    dataset = pd.read_csv(csv_filepath)
+    dataset = pd.read_excel(csv_filepath)
     logger.info(f'Loaded dataset from {csv_filepath}')
     swe_bench_tests = filter_dataset(dataset, 'instance_id')
 
     llm_config = None
     if args.llm_config:
         llm_config = get_llm_config_arg(args.llm_config)
+        llm_config.log_completions = True
 
     if llm_config is None:
         raise ValueError(f'Could not find LLM config: --llm_config {args.llm_config}')
 
     details = {}
     _agent_cls = openhands.agenthub.Agent.get_cls(args.agent_cls)
-    if hasattr(_agent_cls, 'system_message'):
-        details['system_message'] = _agent_cls.system_message
-    if hasattr(_agent_cls, 'in_context_example'):
-        details['in_context_example'] = _agent_cls.in_context_example
-
+    dataset_descrption = (
+        args.dataset.replace('/', '__') + '-' + args.split.replace('/', '__')
+    )
     metadata = make_metadata(
         llm_config,
-        'swe-bench-lite',
+        dataset_descrption,
         args.agent_cls,
         args.max_iterations,
         args.eval_note,
@@ -609,5 +678,5 @@ if __name__ == '__main__':
         output_file,
         args.eval_num_workers,
         process_instance,
-        timeout_seconds=120 * 60,
+        timeout_seconds=120 * 60,  # 2 hour PER instance should be more than enough
     )

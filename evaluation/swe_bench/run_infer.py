@@ -138,9 +138,12 @@ def get_instruction(instance: pd.Series, metadata: EvalMetadata):
             '</uploaded_files>\n'
             f"I've uploaded a python code repository in the directory {workspace_dir_name}. Consider the following PR description:\n\n"
             f'<pr_description>\n'
-            f'{instance.problem_statement}\n'
+            f'{instance.original_issue}\n'
             '</pr_description>\n\n'
-            'Can you help me implement the necessary changes to the repository so that the requirements specified in the <pr_description> are met?\n'
+            '<hints>\n'
+            f'{instance.hints_text}\n'
+            '</hints>\n'
+            'Can you help me implement the necessary changes to the repository so that the requirements specified in the <pr_description> are met by making changes to the <files_to_modify>?\n'
             "I've already taken care of all changes to any of the test files described in the <pr_description>. This means you DON'T have to modify the testing logic or any of the tests in any way!\n"
             'Your task is to make the minimal changes to non-tests files in the /repo directory to ensure the <pr_description> is satisfied.\n'
             'Follow these steps to resolve the issue:\n'
@@ -206,7 +209,7 @@ def get_config(
             platform='linux/amd64',
             api_key=os.environ.get('ALLHANDS_API_KEY', None),
             remote_runtime_api_url=os.environ.get('SANDBOX_REMOTE_RUNTIME_API_URL'),
-            keep_runtime_alive=False,
+            # keep_remote_runtime_alive=False,
             remote_runtime_init_timeout=3600,
         ),
         # do not mount workspace
@@ -362,6 +365,11 @@ def initialize_runtime(
         # Handle the error appropriately, maybe by raising a custom exception
         raise RuntimeError(f'Failed to initialize runtime: {obs.content}')
     assert obs.exit_code == 0
+    if obs.exit_code != 0:
+        logger.error(f'Command failed with exit code {obs.exit_code}: {obs.content}')
+        # Handle the error appropriately, maybe by raising a custom exception
+        raise RuntimeError(f'Failed to initialize runtime: {obs.content}')
+    assert obs.exit_code == 0
 
     action = CmdRunAction(command='git reset --hard')
     action.timeout = 600
@@ -424,6 +432,17 @@ def complete_runtime(
         # Handle the error appropriately, maybe by raising a custom exception
         raise RuntimeError(f'Failed to initialize runtime: {obs.content}')
     assert obs.exit_code == 0
+    # assert_and_raise(
+    #     isinstance(obs, CmdOutputObservation) and obs.exit_code == 0,
+    #     f'Failed to cd to /workspace/{workspace_dir_name}: {str(obs)}',
+    # )
+
+    # action = CmdRunAction(command='cd "$(ls | head -n 1)"')
+    # action.timeout = 600
+    # logger.info(action, extra={'msg_type': 'ACTION'})
+    # obs = runtime.run_action(action)
+    # logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+    # assert obs.exit_code == 0
 
     action = CmdRunAction(command='git config --global core.pager ""')
     action.timeout = 600
@@ -476,7 +495,7 @@ def process_instance(
     reset_logger: bool = True,
 ) -> EvalOutput:
     config = get_config(instance, metadata)
-    # global fake_user
+    global fake_user
     # df = pd.read_csv("data/fake_user_issues_under_0.csv")
     # issue = df.loc[df['instance_id'] == instance["instance_id"], 'issue'].iloc[0]
     # hidden_details_merged = df.loc[df['instance_id'] == instance["instance_id"], 'hidden_details'].iloc[0]
@@ -586,7 +605,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--csv_file',
         type=str,
-        default='evaluation/swe_bench/data/full_summaries_verified.csv',
+        default='evaluation/swe_bench/data/full_summaries_verified.xlsx',
         help='Path to the CSV file containing the dataset',
     )
     parser.add_argument(
@@ -601,7 +620,7 @@ if __name__ == '__main__':
     # so we don't need to manage file uploading to OpenHands's repo
     #    dataset = load_dataset(args.dataset, split=args.split)
     csv_filepath = args.csv_file
-    dataset = pd.read_csv(csv_filepath)
+    dataset = pd.read_excel(csv_filepath)
     logger.info(f'Loaded dataset from {csv_filepath}')
     swe_bench_tests = filter_dataset(dataset, 'instance_id')
 

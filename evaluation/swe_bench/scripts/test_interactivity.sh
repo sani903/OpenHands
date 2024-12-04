@@ -12,6 +12,7 @@ NUM_WORKERS=$6
 DATASET=$7
 SPLIT=$8
 N_RUNS=$9
+
 if [ -z "$NUM_WORKERS" ]; then
   NUM_WORKERS=1
   echo "Number of workers not specified, use default $NUM_WORKERS"
@@ -24,7 +25,7 @@ if [ -z "$AGENT" ]; then
 fi
 
 if [ -z "$MAX_ITER" ]; then
-  echo "MAX_ITER not specified, use default 30"
+  echo "MAX_ITER not specified, use default 100"
   MAX_ITER=5
 fi
 
@@ -38,6 +39,7 @@ if [ -z "$RUN_WITH_BROWSING" ]; then
   RUN_WITH_BROWSING=false
 fi
 
+
 if [ -z "$DATASET" ]; then
   echo "DATASET not specified, use default princeton-nlp/SWE-bench_Lite"
   DATASET="princeton-nlp/SWE-bench_Lite"
@@ -50,7 +52,6 @@ fi
 
 export USE_INSTANCE_IMAGE=$USE_INSTANCE_IMAGE
 echo "USE_INSTANCE_IMAGE: $USE_INSTANCE_IMAGE"
-
 export RUN_WITH_BROWSING=$RUN_WITH_BROWSING
 echo "RUN_WITH_BROWSING: $RUN_WITH_BROWSING"
 
@@ -83,7 +84,7 @@ fi
 
 function run_eval() {
   local eval_note=$1
-  COMMAND="poetry run python evaluation/swe_bench/run_infer.py \
+  COMMAND="poetry run python evaluation/swe_bench/test_interactivity.py \
     --agent-cls $AGENT \
     --llm-config $MODEL_CONFIG \
     --max-iterations $MAX_ITER \
@@ -91,16 +92,17 @@ function run_eval() {
     --eval-note $eval_note \
     --dataset $DATASET \
     --split $SPLIT"
+
   if [ -n "$EVAL_LIMIT" ]; then
     echo "EVAL_LIMIT: $EVAL_LIMIT"
     COMMAND="$COMMAND --eval-n-limit $EVAL_LIMIT"
   fi
+
   # Run the command
   eval $COMMAND
 }
 
 unset SANDBOX_ENV_GITHUB_TOKEN # prevent the agent from using the github token to push
-
 if [ -z "$N_RUNS" ]; then
   N_RUNS=1
   echo "N_RUNS not specified, use default $N_RUNS"
