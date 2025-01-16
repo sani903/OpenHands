@@ -20,13 +20,29 @@ const sidebars: SidebarsConfig = {
         {
           type: 'doc',
           label: 'Best Practices',
-          id: 'usage/prompting-best-practices',
+          id: 'usage/prompting/prompting-best-practices',
         },
         {
-          type: 'doc',
-          label: 'Micro-Agents',
-          id: 'usage/micro-agents',
-        },
+          type: 'category',
+          label: 'Microagents',
+          items: [
+            {
+              type: 'doc',
+              label: 'Overview',
+              id: 'usage/prompting/microagents-overview',
+            },
+            {
+              type: 'doc',
+              label: 'Repository',
+              id: 'usage/prompting/microagents-repo',
+            },
+            {
+              type: 'doc',
+              label: 'Public',
+              id: 'usage/prompting/microagents-public',
+            },
+          ],
+        }
       ],
     },
     {
@@ -121,11 +137,6 @@ const sidebars: SidebarsConfig = {
           label: 'Custom Sandbox',
           id: 'usage/how-to/custom-sandbox-guide',
         },
-        {
-          type: 'doc',
-          label: 'Persist Session Data',
-          id: 'usage/how-to/persist-session-data',
-        },
       ],
     },
     {
@@ -167,11 +178,6 @@ const sidebars: SidebarsConfig = {
           type: 'doc',
           label: 'Evaluation',
           id: 'usage/how-to/evaluation-harness',
-        },
-        {
-          type: 'doc',
-          label: 'Kubernetes Deployment',
-          id: 'usage/how-to/openshift-example',
         },
       ],
     },

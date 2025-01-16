@@ -6,6 +6,7 @@ import time
 import docker
 
 from openhands import __version__ as oh_version
+from openhands.core.exceptions import AgentRuntimeBuildError
 from openhands.core.logger import RollingLogger
 from openhands.core.logger import openhands_logger as logger
 from openhands.runtime.builder.base import RuntimeBuilder
@@ -19,9 +20,22 @@ class DockerRuntimeBuilder(RuntimeBuilder):
         version_info = self.docker_client.version()
         server_version = version_info.get('Version', '').replace('-', '.')
         if tuple(map(int, server_version.split('.')[:2])) < (18, 9):
-            raise RuntimeError('Docker server version must be >= 18.09 to use BuildKit')
+            raise AgentRuntimeBuildError(
+                'Docker server version must be >= 18.09 to use BuildKit'
+            )
 
         self.rolling_logger = RollingLogger(max_lines=10)
+
+    @staticmethod
+    def check_buildx():
+        """Check if Docker Buildx is available"""
+        try:
+            result = subprocess.run(
+                ['docker', 'buildx', 'version'], capture_output=True, text=True
+            )
+            return result.returncode == 0
+        except FileNotFoundError:
+            return False
 
     def build(
         self,
@@ -44,7 +58,7 @@ class DockerRuntimeBuilder(RuntimeBuilder):
             str: The name of the built Docker image.
 
         Raises:
-            RuntimeError: If the Docker server version is incompatible or if the build process fails.
+            AgentRuntimeBuildError: If the Docker server version is incompatible or if the build process fails.
 
         Note:
             This method uses Docker BuildKit for improved build performance and caching capabilities.
@@ -55,7 +69,41 @@ class DockerRuntimeBuilder(RuntimeBuilder):
         version_info = self.docker_client.version()
         server_version = version_info.get('Version', '').replace('-', '.')
         if tuple(map(int, server_version.split('.'))) < (18, 9):
-            raise RuntimeError('Docker server version must be >= 18.09 to use BuildKit')
+            raise AgentRuntimeBuildError(
+                'Docker server version must be >= 18.09 to use BuildKit'
+            )
+
+        if not DockerRuntimeBuilder.check_buildx():
+            # when running openhands in a container, there might not be a "docker"
+            # binary available, in which case we need to download docker binary.
+            # since the official openhands app image is built from debian, we use
+            # debian way to install docker binary
+            logger.info(
+                'No docker binary available inside openhands-app container, trying to download online...'
+            )
+            commands = [
+                'apt-get update',
+                'apt-get install -y ca-certificates curl gnupg',
+                'install -m 0755 -d /etc/apt/keyrings',
+                'curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc',
+                'chmod a+r /etc/apt/keyrings/docker.asc',
+                'echo \
+                  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
+                  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+                  tee /etc/apt/sources.list.d/docker.list > /dev/null',
+                'apt-get update',
+                'apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin',
+            ]
+            for cmd in commands:
+                try:
+                    subprocess.run(
+                        cmd, shell=True, check=True, stdout=subprocess.DEVNULL
+                    )
+                except subprocess.CalledProcessError as e:
+                    logger.error(f'Image build failed:\n{e}')
+                    logger.error(f'Command output:\n{e.output}')
+                    raise
+            logger.info('Downloaded and installed docker binary')
 
         target_image_hash_name = tags[0]
         target_image_repo, target_image_source_tag = target_image_hash_name.split(':')
@@ -154,7 +202,7 @@ class DockerRuntimeBuilder(RuntimeBuilder):
         # Check if the image is built successfully
         image = self.docker_client.images.get(target_image_hash_name)
         if image is None:
-            raise RuntimeError(
+            raise AgentRuntimeBuildError(
                 f'Build failed: Image {target_image_hash_name} not found'
             )
 
