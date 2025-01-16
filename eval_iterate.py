@@ -2,7 +2,7 @@ import os
 import subprocess
 
 # Directory containing the .jsonl files
-output_dir = '/Users/sanid/Desktop/Interactivity/OpenHands/evaluation/evaluation_outputs/outputs/princeton-nlp__SWE-bench-test/CodeActAgent/deepseek-chat_maxiter_30_N_v2.2-no-hint-run_1/'  # Evaluation script path
+output_dir = '/Users/sanid/Desktop/Interactivity/OpenHands/evaluation/evaluation_outputs/outputs/princeton-nlp__SWE-bench-test/CodeActAgent/claude-3-5-haiku-20241022_maxiter_30_N_v0.16.0-no-hint-run_1/'  # Evaluation script path
 # eval_script = './evaluation/swe_bench/scripts/eval_infer.sh'
 
 os.environ['ALLHANDS_API_KEY'] = 'ah-73a36a7d-a9f4-4f52-aa85-215abc90a96f'
@@ -18,7 +18,7 @@ def evaluate_files():
     # Find all .jsonl files ending with output.jsonl in the specified directory and its subdirectories
     for root, _, files in os.walk(output_dir):
         for file in files:
-            if file == 'base_no_files.jsonl':
+            if file == 'haiku_fin_hidden.jsonl':
                 print(file)
                 # if file.startswith('interact') and file.endswith('.jsonl'):
                 # if file.startswith('interact') and file.endswith('output.jsonl'):
@@ -31,7 +31,7 @@ def evaluate_files():
                 try:
                     subprocess.run(
                         [
-                            './evaluation/swe_bench/scripts/eval_infer_remote.sh',
+                            './evaluation/benchmarks/swe_bench/scripts/eval_infer_remote.sh',
                             file_path,
                         ],
                         check=True,

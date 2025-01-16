@@ -9,7 +9,6 @@ import pandas as pd
 import toml
 
 import openhands.agenthub
-from evaluation.swe_bench.prompt import CODEACT_SWE_PROMPT
 from evaluation.utils.shared import (
     EvalException,
     EvalMetadata,
@@ -48,30 +47,7 @@ client = openai.OpenAI(
 
 
 class FakeUser:
-    def __init__(self, issue, hints, hidden_details):
-        self.system_message = f"""
-        You are a GitHub user reporting an issue. Here are the details of your issue and environment:
-
-        Issue: {issue}
-
-        Hints: {hints}
-
-        Hidden details (only reveal if specifically asked): {hidden_details}
-
-        Your task is to respond to questions from a coder who is trying to solve your issue. Follow these rules:
-        1. If the coder asks a question that is directly related to the hidden details, provide that information.
-        2. If the question is not related to the hidden details, respond based on the original issue description.
-        3. If you're unsure whether to reveal information, err on the side of caution and don't reveal it.
-        4. Always stay in character as a user reporting an issue, not as an AI assistant.
-        5. Keep your responses concise and to the point.
-        6. The coder has limited turns to solve the issue. Do not interact with the coder beyond 3 turns.
-
-        Respond with "I don't have that information" if the question is unrelated or you're unsure.
-        """
-        self.chat_history = [{'role': 'system', 'content': self.system_message}]
-        self.turns = 0
-
-    # def __init__(self, issue, hints, files):
+    # def __init__(self, issue, hints, hidden_details):
     #     self.system_message = f"""
     #     You are a GitHub user reporting an issue. Here are the details of your issue and environment:
 
@@ -79,25 +55,48 @@ class FakeUser:
 
     #     Hints: {hints}
 
-    #     Files relative to your current directory: {files}
+    #     Hidden details (only reveal if specifically asked): {hidden_details}
 
-    #     Your task is to respond to questions from a coder who is trying to solve your issue. The coder has a summarized version of the issue you have. Follow these rules:
-    #     1. If the coder asks a question that is directly related to the information in the issue you have, provide that information.
-    #     2. Always stay in character as a user reporting an issue, not as an AI assistant.
-    #     3. Keep your responses concise and to the point.
-    #     4. The coder has limited turns to solve the issue. Do not interact with the coder beyond 3 turns.
+    #     Your task is to respond to questions from a coder who is trying to solve your issue. Follow these rules:
+    #     1. If the coder asks a question that is directly related to the hidden details, provide that information.
+    #     2. If the question is not related to the hidden details, respond based on the original issue description.
+    #     3. If you're unsure whether to reveal information, err on the side of caution and don't reveal it.
+    #     4. Always stay in character as a user reporting an issue, not as an AI assistant.
+    #     5. Keep your responses concise and to the point.
+    #     6. The coder has limited turns to solve the issue. Do not interact with the coder beyond 3 turns.
 
     #     Respond with "I don't have that information" if the question is unrelated or you're unsure.
     #     """
     #     self.chat_history = [{'role': 'system', 'content': self.system_message}]
     #     self.turns = 0
 
+    def __init__(self, issue, hints, files):
+        self.system_message = f"""
+        You are a GitHub user reporting an issue. Here are the details of your issue and environment:
+
+        Issue: {issue}
+
+        Hints: {hints}
+
+        Files relative to your current directory: {files}
+
+        Your task is to respond to questions from a coder who is trying to solve your issue. The coder has a summarized version of the issue you have. Follow these rules:
+        1. If the coder asks a question that is directly related to the information in the issue you have, provide that information.
+        2. Always stay in character as a user reporting an issue, not as an AI assistant.
+        3. Keep your responses concise and to the point.
+        4. The coder has limited turns to solve the issue. Do not interact with the coder beyond 3 turns.
+
+        Respond with "I don't have that information" if the question is unrelated or you're unsure.
+        """
+        self.chat_history = [{'role': 'system', 'content': self.system_message}]
+        self.turns = 0
+
     def generate_reply(self, question):
         if self.turns > 3:
             return 'Please continue working on the task. Do NOT ask for more help.'
         self.chat_history.append({'role': 'user', 'content': question.content})
         response = client.chat.completions.create(
-            model='neulab/gpt-4o-2024-08-06', messages=self.chat_history
+            model='openai/neulab/meta-llama/Meta-Llama-3.1-405B-Instruct', messages=self.chat_history
         )
 
         reply = response.choices[0].message.content
@@ -498,10 +497,10 @@ def process_instance(
     # delimiter = '|||'
     # hidden_details_split = hidden_details_merged.split(delimiter)
     issue = str(original_issue)
-    fake_user = FakeUser(
-        issue=issue, hints=instance.hints_text, hidden_details=instance.hidden_details
-    )
-    # fake_user = FakeUser(issue=issue, hints=instance.hints_text, files=instance.files)
+    # fake_user = FakeUser(
+    #     issue=issue, hints=instance.hints_text, hidden_details=instance.hidden_details
+    # )
+    fake_user = FakeUser(issue=issue, hints=instance.hints_text, files=instance.files)
     # Setup the logger properly, so you can run multi-processing to parallelize the evaluation
     if reset_logger:
         log_dir = os.path.join(metadata.eval_output_dir, 'infer_logs')
@@ -604,7 +603,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--csv_file',
         type=str,
-        default='evaluation/swe_bench/data/full_CoT_verified.csv',
+        default='evaluation/benchmarks/swe_bench/data/full_summaries_verified.xlsx',
         help='Path to the CSV file containing the dataset',
     )
     parser.add_argument(
@@ -619,7 +618,7 @@ if __name__ == '__main__':
     # so we don't need to manage file uploading to OpenHands's repo
     #    dataset = load_dataset(args.dataset, split=args.split)
     csv_filepath = args.csv_file
-    dataset = pd.read_csv(csv_filepath)
+    dataset = pd.read_excel(csv_filepath)
     logger.info(f'Loaded dataset from {csv_filepath}')
     swe_bench_tests = filter_dataset(dataset, 'instance_id')
 
@@ -627,6 +626,7 @@ if __name__ == '__main__':
     if args.llm_config:
         llm_config = get_llm_config_arg(args.llm_config)
         llm_config.log_completions = True
+        llm_config.modify_params = False
 
     if llm_config is None:
         raise ValueError(f'Could not find LLM config: --llm_config {args.llm_config}')

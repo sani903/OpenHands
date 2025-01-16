@@ -10,7 +10,7 @@ import pandas as pd
 import toml
 
 import openhands.agenthub
-from evaluation.swe_bench.prompt import CODEACT_SWE_PROMPT
+# from evaluation.swe_bench.prompt import CODEACT_SWE_PROMPT
 from evaluation.utils.shared import (
     EvalException,
     EvalMetadata,
@@ -160,7 +160,8 @@ def get_instruction(instance: pd.Series, metadata: EvalMetadata):
             instruction += (
                 f'--- BEGIN HINTS ---\n{instance.hints_text}\n--- END HINTS ---\n'
             )
-        instruction += CODEACT_SWE_PROMPT.format(workspace_dir_name=workspace_dir_name)
+        # instruction += CODEACT_SWE_PROMPT.format(workspace_dir_name=workspace_dir_name)
+        #  Do this, if required, in a separate message then wait for my response.
     else:
         instruction = (
             '<uploaded_files>\n'
@@ -168,14 +169,14 @@ def get_instruction(instance: pd.Series, metadata: EvalMetadata):
             '</uploaded_files>\n'
             f"I've uploaded a python code repository in the directory {workspace_dir_name}. Consider the following PR description:\n\n"
             f'<pr_description>\n'
-            f'{instance.problem_statement}\n'
+            f'{issue}\n'
             '</pr_description>\n\n'
             'Can you help me implement the necessary changes to the repository so that the requirements specified in the <pr_description> are met?\n'
             "I've already taken care of all changes to any of the test files described in the <pr_description>. This means you DON'T have to modify the testing logic or any of the tests in any way!\n"
             'Your task is to make the minimal changes to non-tests files in the /repo directory to ensure the <pr_description> is satisfied.\n'
-            'Your success depends on having all relevant details to solve the issue effectively. Whenever you encounter unclear or missing information, proactively ask questions to fill those gaps. Even minor ambiguities can affect the outcome, so always prioritize clarifying questions. Avoid questions only when you are 100% certain no further clarification is needed.\n'
+            'Your success depends on having all relevant details to solve the issue effectively. Whenever you encounter unclear or missing information, proactively ask questions to fill those gaps. Even minor ambiguities can affect the outcome, so always prioritize clarifying questions. Avoid questions only when you are 100% certain no further clarification is needed. Interact, if required, in a separate message then wait for my response.\n'
             'Follow these steps to resolve the issue:\n'
-            '1. As a first step, look at the issue and ask me questions if you need any clarifications or have any doubts.\n'
+            '1. As a first step, look at the issue and ask me questions if you need any clarifications or have any doubts. If you choose to interact, wait for my response before proceeding with other tasks.\n'
             '2. Then, it might be a good idea to explore the repo to familiarize yourself with its structure.\n'
             '2. Create a script to reproduce the error and execute it with `python <filename.py>` using the BashTool, to confirm the error\n'
             '3. Edit the sourcecode of the repo to resolve the issue\n'
@@ -622,7 +623,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--csv_file',
         type=str,
-        default='evaluation/swe_bench/data/full_summaries_verified.xlsx',
+        default='evaluation/benchmarks/swe_bench/data/full_summaries_verified.xlsx',
         help='Path to the CSV file containing the dataset',
     )
     parser.add_argument(
@@ -645,6 +646,7 @@ if __name__ == '__main__':
     if args.llm_config:
         llm_config = get_llm_config_arg(args.llm_config)
         llm_config.log_completions = True
+        llm_config.modify_params = False
 
     if llm_config is None:
         raise ValueError(f'Could not find LLM config: --llm_config {args.llm_config}')

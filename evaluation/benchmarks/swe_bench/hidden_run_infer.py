@@ -9,7 +9,6 @@ import pandas as pd
 import toml
 
 import openhands.agenthub
-from evaluation.swe_bench.prompt import CODEACT_SWE_PROMPT
 from evaluation.utils.shared import (
     EvalException,
     EvalMetadata,
@@ -586,7 +585,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--csv_file',
         type=str,
-        default='evaluation/swe_bench/data/full_CoT_verified.csv',
+        default='evaluation/benchmarks/swe_bench/data/full_summaries_verified.xlsx',
         help='Path to the CSV file containing the dataset',
     )
     parser.add_argument(
@@ -601,7 +600,7 @@ if __name__ == '__main__':
     # so we don't need to manage file uploading to OpenHands's repo
     #    dataset = load_dataset(args.dataset, split=args.split)
     csv_filepath = args.csv_file
-    dataset = pd.read_csv(csv_filepath)
+    dataset = pd.read_excel(csv_filepath)
     logger.info(f'Loaded dataset from {csv_filepath}')
     swe_bench_tests = filter_dataset(dataset, 'instance_id')
 
@@ -609,6 +608,7 @@ if __name__ == '__main__':
     if args.llm_config:
         llm_config = get_llm_config_arg(args.llm_config)
         llm_config.log_completions = True
+        llm_config.modify_params = False
 
     if llm_config is None:
         raise ValueError(f'Could not find LLM config: --llm_config {args.llm_config}')

@@ -1,7 +1,7 @@
 import json
 
 # Path to the generated file (hardcoded)
-file_path = "/path/to/your/instance_results.json"
+file_path = "/Users/sanid/Desktop/Interactivity/OpenHands/evaluation/evaluation_outputs/outputs/princeton-nlp__SWE-bench-test/CodeActAgent/claude-3-5-haiku-20241022_maxiter_3_N_v0.16.0-no-hint-run_1/interactivity/interactivity_results_med.json"
 
 # Initialize counters
 gold_1_output_1 = 0
@@ -37,9 +37,11 @@ if total_gold_1 > 0:
     precision = gold_1_output_1 / (gold_1_output_1 + (total_gold_0 - gold_0_output_0))
     recall = gold_1_output_1 / total_gold_1
     f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
-    
+    accuracy = (gold_1_output_1 + gold_0_output_0) / (total_gold_1 + total_gold_0)
+
     print(f"\nPrecision: {precision:.4f}")
     print(f"Recall: {recall:.4f}")
     print(f"F1 Score: {f1_score:.4f}")
+    print(f"Accuracy: {accuracy:.4f}")
 else:
     print("\nUnable to calculate precision, recall, and F1 score as there are no positive cases (gold = 1)")

@@ -142,7 +142,7 @@ def get_instruction(instance: pd.Series, metadata: EvalMetadata):
             '<hints>\n'
             f'{instance.hints_text}\n'
             '</hints>\n'
-            'Can you help me implement the necessary changes to the repository so that the requirements specified in the <pr_description> are met by making changes to the <files_to_modify>?\n'
+            'Can you help me implement the necessary changes to the repository so that the requirements specified in the <pr_description> are met?\n'
             "I've already taken care of all changes to any of the test files described in the <pr_description>. This means you DON'T have to modify the testing logic or any of the tests in any way!\n"
             'Your task is to make the minimal changes to non-tests files in the /repo directory to ensure the <pr_description> is satisfied.\n'
             'Follow these steps to resolve the issue:\n'
@@ -174,6 +174,8 @@ def get_instance_docker_image(instance_id: str) -> str:
         '__', '_s_'
     )  # to comply with docker image naming convention
     return (DOCKER_IMAGE_PREFIX.rstrip('/') + '/' + image_name).lower()
+
+
 
 
 def get_config(
@@ -208,7 +210,7 @@ def get_config(
             platform='linux/amd64',
             api_key=os.environ.get('ALLHANDS_API_KEY', None),
             remote_runtime_api_url=os.environ.get('SANDBOX_REMOTE_RUNTIME_API_URL'),
-            # keep_remote_runtime_alive=False,
+            keep_runtime_alive=False,
             remote_runtime_init_timeout=3600,
         ),
         # do not mount workspace
@@ -604,7 +606,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--csv_file',
         type=str,
-        default='evaluation/swe_bench/data/full_summaries_verified.xlsx',
+        default='evaluation/benchmarks/swe_bench/data/full_summaries_verified.xlsx',
         help='Path to the CSV file containing the dataset',
     )
     parser.add_argument(
