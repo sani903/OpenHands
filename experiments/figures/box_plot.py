@@ -9,10 +9,10 @@ difference_files = [
     "cs_embedding_results.csv"
 ]
 annotation_files = [
-    "llama_gpt4o_evaluation_results_strict.csv",
-    "ds_gpt4o_evaluation_results_strict.csv",
-    "haiku_gpt4o_evaluation_results_strict.csv",
-    "cs_gpt4o_evaluation_results_strict.csv"
+    "llama_gpt4o_evaluation_results.csv",
+    "ds_gpt4o_evaluation_results.csv",
+    "haiku_gpt4o_evaluation_results.csv",
+    "cs_gpt4o_evaluation_results.csv"
 ]
 
 models = ["Llama 3.1", "Deepseek Chat", "Claude Haiku", "Claude Sonnet"]
