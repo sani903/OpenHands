@@ -4,8 +4,7 @@ import litellm
 import re
 
 # Set up your API key and base URL for Litellm
-api_key = 'sk-7WI9eKYu_UGeNH2xgZMZkA'
-base_url = "https://cmu.litellm.ai"
+api_key = ''
 
 def evaluate_answer(problem_statement, question, answer):
     prompt = f"""Evaluate the following answer on a scale of 1–5 based on how much new and relevant details it adds to the given GitHub issue, which would help make solving the issue easier. 
@@ -33,7 +32,6 @@ def evaluate_answer(problem_statement, question, answer):
     
     response = litellm.completion(
         api_key=api_key,
-        base_url=base_url,
         model="openai/gpt-4o",
         messages=[
             {"role": "system", "content": "You are a helpful assistant adept at nuanced evaluations."},
