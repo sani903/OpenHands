@@ -106,7 +106,7 @@ print(f"Resolve rate where file_match_count is 1: {resolved_with_match:.2%}")
 print(f"Resolve rate where file_match_count is 0: {resolved_without_match:.2%}")
 
 # Save the results to a CSV file
-results_df.to_csv('llama_merged_file_analysis.csv', index=False)
+results_df.to_csv('llama_file_analysis.csv', index=False)
 
 # Display summary of file match counts
 print(f"Total instance_ids analyzed: {len(results_df)}")
