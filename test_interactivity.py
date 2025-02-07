@@ -1,7 +1,7 @@
 import json
 
 # Path to the generated file (hardcoded)
-file_path = "/Users/sanid/Desktop/Interactivity/OpenHands/evaluation/evaluation_outputs/outputs/princeton-nlp__SWE-bench-test/CodeActAgent/claude-3-5-haiku-20241022_maxiter_3_N_v0.16.0-no-hint-run_1/interactivity/interactivity_results_med.json"
+file_path = ""
 
 # Initialize counters
 gold_1_output_1 = 0
