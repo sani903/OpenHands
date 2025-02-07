@@ -4,15 +4,13 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 from litellm import embedding
 
-api_key = 'sk-7WI9eKYu_UGeNH2xgZMZkA'
-api_base = "https://cmu.litellm.ai"
+api_key=''
 
 def get_embedding(text):
     response = embedding(
         model="openai/text-embedding-3-small",
         input=[text],
         api_key=api_key,
-        api_base=api_base,
     )
     return response['data'][0]['embedding']
 
