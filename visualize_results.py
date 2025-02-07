@@ -20,7 +20,7 @@ def visualise_swe_bench(input_files: list[str]):
         seen.add(x)
     print(duplicates)
 
-    vis_client = zeno_client.ZenoClient("zen_8Ufv7_biEq_3SjP7eN-chgRpZ0WcLWOcTjQbzY2ZWJ8")
+    vis_client = zeno_client.ZenoClient(API_KEY)
 
     # Create DataFrame with properly formatted conversations
     df_data = pd.DataFrame(
