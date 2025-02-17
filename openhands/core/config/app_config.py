@@ -45,6 +45,7 @@ class AppConfig(BaseModel):
         file_uploads_allowed_extensions: Allowed file extensions. `['.*']` allows all.
         cli_multiline_input: Whether to enable multiline input in CLI. When disabled,
             input is read line by line. When enabled, input continues until /exit command.
+        checklist_model_path: Model path or HF name to be used for checklist generation
     """
 
     llms: dict[str, LLMConfig] = Field(default_factory=dict)
@@ -76,6 +77,7 @@ class AppConfig(BaseModel):
     file_uploads_allowed_extensions: list[str] = Field(default_factory=lambda: ['.*'])
     runloop_api_key: SecretStr | None = Field(default=None)
     cli_multiline_input: bool = Field(default=False)
+    checklist_model_path: str | None = Field(default=None)
 
     defaults_dict: ClassVar[dict] = {}
 
@@ -95,6 +97,9 @@ class AppConfig(BaseModel):
 
     def set_llm_config(self, value: LLMConfig, name='llm') -> None:
         self.llms[name] = value
+
+    def set_checklist_model(self, model_path: str) -> None:
+        self.checklist_model_path = model_path
 
     def get_agent_config(self, name='agent') -> AgentConfig:
         """'agent' is the name for default config (for backward compatibility prior to 0.8)."""
@@ -123,3 +128,5 @@ class AppConfig(BaseModel):
         """Post-initialization hook, called when the instance is created with only default values."""
         super().model_post_init(__context)
         AppConfig.defaults_dict = model_defaults_to_dict(self)
+        
+  
