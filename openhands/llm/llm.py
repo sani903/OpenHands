@@ -33,6 +33,7 @@ from openhands.llm.fn_call_converter import (
 )
 from openhands.llm.metrics import Metrics
 from openhands.llm.retry_mixin import RetryMixin
+from openhands.llm.local_checklist_model import LocalChecklistModel
 
 __all__ = ['LLM']
 
@@ -103,6 +104,7 @@ class LLM(RetryMixin, DebugMixin):
         )
         self.cost_metric_supported: bool = True
         self.config: LLMConfig = copy.deepcopy(config)
+        self.checklist_model = LocalChecklistModel(self.config.checklist_model_path)
 
         self.model_info: ModelInfo | None = None
         self.retry_listener = retry_listener
@@ -425,7 +427,10 @@ class LLM(RetryMixin, DebugMixin):
             self._function_calling_active = litellm.supports_function_calling(
                 model=self.config.model
             )
-
+            
+    async def generate_checklist(self, prompt):
+        return await self.checklist_model.generate_checklist(prompt)
+        
     def vision_is_active(self) -> bool:
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
