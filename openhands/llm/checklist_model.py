@@ -1,8 +1,7 @@
-from openhands.llm.base import BaseLLM
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 
-class LocalChecklistModel(BaseLLM):
+class LocalChecklistModel:
     def __init__(self, model_path):
         self.tokenizer = AutoTokenizer.from_pretrained(model_path)
         self.model = AutoModelForCausalLM.from_pretrained(
