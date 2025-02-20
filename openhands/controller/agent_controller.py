@@ -123,6 +123,9 @@ class AgentController:
         # the event stream must be set before maybe subscribing to it
         self.event_stream = event_stream
 
+        # To check if the checklist has been generated for the user message
+        self._first_user_message_processed = False
+
         # subscribe to the event stream if this is not a delegate
         if not self.is_delegate:
             self.event_stream.subscribe(
@@ -399,6 +402,16 @@ class AgentController:
             action (MessageAction): The message action to handle.
         """
         if action.source == EventSource.USER:
+            # Only augment the very first user message
+            if not self._first_user_message_processed:
+                # Generate checklist using the LLM client
+                checklist = await self.agent.llm.generate_checklist(action.content)
+                # Use the helper to build an augmented message
+                augmented_action = self._augment_task_with_checklist(action, checklist)
+                # Replace the original content with the augmented content
+                action.content = augmented_action.content
+                self._first_user_message_processed = True
+                
             # Use info level if LOG_ALL_EVENTS is set
             log_level = (
                 'info' if os.getenv('LOG_ALL_EVENTS') in ('true', '1') else 'debug'
@@ -1082,3 +1095,42 @@ class AgentController:
                 result = event.agent_state == AgentState.RUNNING
                 return result
         return False
+
+def _get_latest_user_task(self) -> MessageAction | None:
+    """
+    Searches the state's history for the most recent MessageAction sent by the user.
+    Returns None if no such task is found.
+    """
+    # Iterate through the history in reverse (most recent first)
+    for event in reversed(self.state.history):
+        if isinstance(event, MessageAction) and event.source == EventSource.USER:
+            return event
+    return None
+
+def _augment_task_with_checklist(self, user_task: MessageAction, checklist: str) -> MessageAction:
+    """
+    Given a user task and a generated checklist, builds an augmented task.
+    The augmentation appends the checklist and additional instructions to the original task content.
+    """
+    augmented_content = (
+        f"{user_task.content}\n\n"
+        "--- Generated Checklist ---\n"
+        f"{checklist}\n"
+        "-----------------------------\n"
+        "Please ensure you have the required information for all of the checklist items above. Else, ask me any doubts or clarifications you need."
+    )
+    # Create a new MessageAction with the updated content.
+    augmented_task = MessageAction(content=augmented_content, source=user_task.source)
+    return augmented_task
+
+async def _update_state_with_augmented_task(self, augmented_task: MessageAction) -> None:
+    """
+    Updates the controller’s state or event stream with the augmented task.
+    Here, the augmented task is added to the event stream so that it's treated as the incoming user message.
+    """
+    # Add the augmented task as an event.
+    self.event_stream.add_event(augmented_task, augmented_task.source)
+    # Optionally, you might also update the state directly.
+    # For instance:
+    # self.state.last_augmented_task = augmented_task
+
