@@ -95,6 +95,7 @@ class AgentController:
         headless_mode: bool = True,
         status_callback: Callable | None = None,
         replay_events: list[Event] | None = None,
+        llm_client: LLMClient | None = None
     ):
         """Initializes a new instance of the AgentController class.
 
@@ -150,6 +151,8 @@ class AgentController:
 
         # replay-related
         self._replay_manager = ReplayManager(replay_events)
+
+        self.llm_client = llm_client
 
     async def close(self) -> None:
         """Closes the agent controller, canceling any ongoing tasks and unsubscribing from the event stream.
@@ -405,7 +408,7 @@ class AgentController:
             # Only augment the very first user message
             if not self._first_user_message_processed:
                 # Generate checklist using the LLM client
-                checklist = await self.agent.llm.generate_checklist(action.content)
+                checklist = await self.llm_client.generate_checklist(action.content)
                 # Use the helper to build an augmented message
                 augmented_action = self._augment_task_with_checklist(action, checklist)
                 # Replace the original content with the augmented content
