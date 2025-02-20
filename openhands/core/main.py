@@ -31,7 +31,6 @@ from openhands.events.serialization import event_from_dict
 from openhands.events.serialization.event import event_to_trajectory
 from openhands.runtime.base import Runtime
 from openhands.llm.checklist_model import LocalChecklistModel
-from openhands.llm.llm_client import LLMClient
 from openhands.controller.agent_controller import AgentController
 
 class FakeUserResponseFunc(Protocol):
@@ -124,8 +123,6 @@ async def run_controller(
     event_stream = runtime.event_stream
 
     checklist_model = LocalChecklistModel(config.checklist_model_path)
-    llm_client = LLMClient(config)
-    llm_client.checklist_model = checklist_model
 
     if agent is None:
         agent = create_agent(runtime, config)
@@ -139,7 +136,7 @@ async def run_controller(
         )
 
     controller, initial_state = create_controller(
-        agent, runtime, config, replay_events=replay_events, llm_client=llm_client
+        agent, runtime, config, replay_events=replay_events, checklist_model = checklist_model
 
     assert isinstance(
         initial_user_action, Action
