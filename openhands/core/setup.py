@@ -17,6 +17,7 @@ from openhands.runtime import get_runtime_cls
 from openhands.runtime.base import Runtime
 from openhands.security import SecurityAnalyzer, options
 from openhands.storage import get_file_store
+from openhands.llm.llm_client import LLMClient
 
 
 def create_runtime(
@@ -84,7 +85,20 @@ def create_controller(
     config: AppConfig,
     headless_mode: bool = True,
     replay_events: list[Event] | None = None,
+    llm_client: LLMClient | None = None
 ) -> Tuple[AgentController, State | None]:
+     """Creates an agent controller with the given agent, runtime, and configuration.
+
+    Args:
+        agent: The agent instance to control.
+        runtime: The runtime environment for the agent.
+        config: The application configuration.
+        replay_events: A list of logs to replay.
+        llm_client: The LLM client to use for checklist generation.
+
+    Returns:
+        A tuple containing the agent controller and the initial state.
+    """
     event_stream = runtime.event_stream
     initial_state = None
     try:
@@ -107,6 +121,7 @@ def create_controller(
         headless_mode=headless_mode,
         confirmation_mode=config.security.confirmation_mode,
         replay_events=replay_events,
+        llm_client=llm_client
     )
     return (controller, initial_state)
 
