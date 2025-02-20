@@ -52,6 +52,7 @@ from openhands.events.observation import (
 )
 from openhands.events.serialization.event import truncate_content
 from openhands.llm.llm import LLM
+from openhands.llm.checklist_model import LocalChecklistModel
 
 # note: RESUME is only available on web GUI
 TRAFFIC_CONTROL_REMINDER = (
@@ -95,7 +96,7 @@ class AgentController:
         headless_mode: bool = True,
         status_callback: Callable | None = None,
         replay_events: list[Event] | None = None,
-        llm_client: LLMClient | None = None
+        checklist_model: LocalChecklistModel | None = None
     ):
         """Initializes a new instance of the AgentController class.
 
@@ -152,7 +153,7 @@ class AgentController:
         # replay-related
         self._replay_manager = ReplayManager(replay_events)
 
-        self.llm_client = llm_client
+        self.checklist_model = checklist_model
 
     async def close(self) -> None:
         """Closes the agent controller, canceling any ongoing tasks and unsubscribing from the event stream.
@@ -406,9 +407,9 @@ class AgentController:
         """
         if action.source == EventSource.USER:
             # Only augment the very first user message
-            if not self._first_user_message_processed:
+            if not self._first_user_message_processed and self.checklist_model:
                 # Generate checklist using the LLM client
-                checklist = await self.llm_client.generate_checklist(action.content)
+                checklist = await self.checklist_model.generate_checklist(action.content)
                 # Use the helper to build an augmented message
                 augmented_action = self._augment_task_with_checklist(action, checklist)
                 # Replace the original content with the augmented content
