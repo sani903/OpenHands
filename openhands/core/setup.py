@@ -94,7 +94,7 @@ def create_controller(
         runtime: The runtime environment for the agent.
         config: The application configuration.
         replay_events: A list of logs to replay.
-        llm_client: The LLM client to use for checklist generation.
+        checklist_model: The LLM checklist model to use for checklist generation.
 
     Returns:
         A tuple containing the agent controller and the initial state.
@@ -121,7 +121,7 @@ def create_controller(
         headless_mode=headless_mode,
         confirmation_mode=config.security.confirmation_mode,
         replay_events=replay_events,
-        llm_client=llm_client
+        checklist_model = checklist_model
     )
     return (controller, initial_state)
 
