@@ -30,7 +30,9 @@ from openhands.events.observation import AgentStateChangedObservation
 from openhands.events.serialization import event_from_dict
 from openhands.events.serialization.event import event_to_trajectory
 from openhands.runtime.base import Runtime
-
+from openhands.llm.checklist_model import LocalChecklistModel
+from openhands.llm.llm_client import LLMClient
+from openhands.controller.agent_controller import AgentController
 
 class FakeUserResponseFunc(Protocol):
     def __call__(
@@ -121,6 +123,10 @@ async def run_controller(
 
     event_stream = runtime.event_stream
 
+    checklist_model = LocalChecklistModel(config.checklist_model_path)
+    llm_client = LLMClient(config)
+    llm_client.checklist_model = checklist_model
+
     if agent is None:
         agent = create_agent(runtime, config)
 
@@ -133,8 +139,7 @@ async def run_controller(
         )
 
     controller, initial_state = create_controller(
-        agent, runtime, config, replay_events=replay_events
-    )
+        agent, runtime, config, replay_events=replay_events, llm_client=llm_client
 
     assert isinstance(
         initial_user_action, Action
@@ -269,6 +274,9 @@ if __name__ == '__main__':
     args = parse_arguments()
 
     config = setup_config_from_args(args)
+
+    # Add path to local checklist model in AppConfig
+    config.checklist_model_path = os.getenv("CHECKLIST_MODEL_PATH", None)
 
     # Determine the task
     task_str = ''
