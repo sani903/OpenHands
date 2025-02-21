@@ -78,6 +78,7 @@ class AppConfig(BaseModel):
     runloop_api_key: SecretStr | None = Field(default=None)
     cli_multiline_input: bool = Field(default=False)
     checklist_model_path: str | None = Field(default=None)
+    conversation_max_age_seconds: int = Field(default=864000)  # 10 days in seconds
 
     defaults_dict: ClassVar[dict] = {}
 
@@ -128,5 +129,3 @@ class AppConfig(BaseModel):
         """Post-initialization hook, called when the instance is created with only default values."""
         super().model_post_init(__context)
         AppConfig.defaults_dict = model_defaults_to_dict(self)
-        
-  
