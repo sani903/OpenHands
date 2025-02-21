@@ -417,6 +417,7 @@ class AgentController:
                 # Replace the original content with the augmented content
                 action.content = augmented_action.content
                 self._first_user_message_processed = True
+                self.state.checklist = checklist
 
             # Use info level if LOG_ALL_EVENTS is set
             log_level = (

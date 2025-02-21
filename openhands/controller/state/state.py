@@ -2,7 +2,7 @@ import base64
 import pickle
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, Optional
 
 from openhands.controller.state.task import RootTask
 from openhands.core.logger import openhands_logger as logger
@@ -94,6 +94,7 @@ class State:
     end_id: int = -1
     # truncation_id tracks where to load history after context window truncation
     truncation_id: int = -1
+    checklist: Optional[str] = None
 
     delegates: dict[tuple[int, int], tuple[str, str]] = field(default_factory=dict)
     # NOTE: This will never be used by the controller, but it can be used by different
@@ -143,6 +144,8 @@ class State:
         # make sure we always have the attribute history
         if not hasattr(self, 'history'):
             self.history = []
+        if not hasattr(self, 'checklist'):
+            self.checklist = None
 
     def get_current_user_intent(self) -> tuple[str | None, list[str] | None]:
         """Returns the latest user message and image(if provided) that appears after a FinishAction, or the first (the task) if nothing was finished yet."""
