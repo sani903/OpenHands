@@ -29,9 +29,9 @@ from openhands.events.event import Event
 from openhands.events.observation import AgentStateChangedObservation
 from openhands.events.serialization import event_from_dict
 from openhands.events.serialization.event import event_to_trajectory
-from openhands.runtime.base import Runtime
 from openhands.llm.checklist_model import LocalChecklistModel
-from openhands.controller.agent_controller import AgentController
+from openhands.runtime.base import Runtime
+
 
 class FakeUserResponseFunc(Protocol):
     def __call__(
@@ -136,7 +136,12 @@ async def run_controller(
         )
 
     controller, initial_state = create_controller(
-        agent, runtime, config, replay_events=replay_events, checklist_model = checklist_model
+        agent,
+        runtime,
+        config,
+        replay_events=replay_events,
+        checklist_model=checklist_model,
+    )
 
     assert isinstance(
         initial_user_action, Action
@@ -272,8 +277,8 @@ if __name__ == '__main__':
 
     config = setup_config_from_args(args)
 
-    # Add path to local checklist model in AppConfig
-    config.checklist_model_path = os.getenv("CHECKLIST_MODEL_PATH", None)
+    # Add path to local checklist model in AppConfig. What should be the default value?
+    config.checklist_model_path = os.getenv('CHECKLIST_MODEL_PATH', 'test')
 
     # Determine the task
     task_str = ''

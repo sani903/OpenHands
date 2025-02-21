@@ -12,12 +12,12 @@ from openhands.core.config import (
 from openhands.core.logger import openhands_logger as logger
 from openhands.events import EventStream
 from openhands.events.event import Event
+from openhands.llm.checklist_model import LocalChecklistModel
 from openhands.llm.llm import LLM
 from openhands.runtime import get_runtime_cls
 from openhands.runtime.base import Runtime
 from openhands.security import SecurityAnalyzer, options
 from openhands.storage import get_file_store
-from openhands.llm.checklist_model import LocalChecklistModel
 
 
 def create_runtime(
@@ -85,9 +85,9 @@ def create_controller(
     config: AppConfig,
     headless_mode: bool = True,
     replay_events: list[Event] | None = None,
-    checklist_model: LocalChecklistModel | None = None
+    checklist_model: LocalChecklistModel | None = None,
 ) -> Tuple[AgentController, State | None]:
-     """Creates an agent controller with the given agent, runtime, and configuration.
+    """Creates an agent controller with the given agent, runtime, and configuration.
 
     Args:
         agent: The agent instance to control.
@@ -121,7 +121,7 @@ def create_controller(
         headless_mode=headless_mode,
         confirmation_mode=config.security.confirmation_mode,
         replay_events=replay_events,
-        checklist_model = checklist_model
+        checklist_model=checklist_model,
     )
     return (controller, initial_state)
 
