@@ -84,6 +84,7 @@ class LLMConfig(BaseModel):
     native_tool_calling: bool | None = Field(default=None)
     reasoning_effort: str | None = Field(default='high')
     seed: int | None = Field(default=None)
+    checklist_model_path: str | None = Field(default="meta-llama/Llama-3.2-1B")
 
     model_config = {'extra': 'forbid'}
 
