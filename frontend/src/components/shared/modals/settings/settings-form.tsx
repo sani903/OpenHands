@@ -9,13 +9,12 @@ import { extractSettings } from "#/utils/settings-utils";
 import { useEndSession } from "#/hooks/use-end-session";
 import { ModalBackdrop } from "../modal-backdrop";
 import { ModelSelector } from "./model-selector";
-import { useCurrentSettings } from "#/context/settings-context";
-import { MEMORY_CONDENSER } from "#/utils/feature-flags";
 import { Settings } from "#/types/settings";
 import { BrandButton } from "#/components/features/settings/brand-button";
 import { KeyStatusIcon } from "#/components/features/settings/key-status-icon";
 import { SettingsInput } from "#/components/features/settings/settings-input";
 import { HelpLink } from "#/components/features/settings/help-link";
+import { useSaveSettings } from "#/hooks/mutation/use-save-settings";
 
 interface SettingsFormProps {
   settings: Settings;
@@ -24,7 +23,7 @@ interface SettingsFormProps {
 }
 
 export function SettingsForm({ settings, models, onClose }: SettingsFormProps) {
-  const { saveUserSettings } = useCurrentSettings();
+  const { mutate: saveUserSettings } = useSaveSettings();
   const endSession = useEndSession();
 
   const location = useLocation();
@@ -44,18 +43,18 @@ export function SettingsForm({ settings, models, onClose }: SettingsFormProps) {
   const handleFormSubmission = async (formData: FormData) => {
     const newSettings = extractSettings(formData);
 
-    // Inject the condenser config from the current feature flag value
-    newSettings.ENABLE_DEFAULT_CONDENSER = MEMORY_CONDENSER;
+    await saveUserSettings(newSettings, {
+      onSuccess: () => {
+        onClose();
+        resetOngoingSession();
 
-    await saveUserSettings(newSettings);
-    onClose();
-    resetOngoingSession();
-
-    posthog.capture("settings_saved", {
-      LLM_MODEL: newSettings.LLM_MODEL,
-      LLM_API_KEY: newSettings.LLM_API_KEY ? "SET" : "UNSET",
-      REMOTE_RUNTIME_RESOURCE_FACTOR:
-        newSettings.REMOTE_RUNTIME_RESOURCE_FACTOR,
+        posthog.capture("settings_saved", {
+          LLM_MODEL: newSettings.LLM_MODEL,
+          LLM_API_KEY: newSettings.LLM_API_KEY ? "SET" : "UNSET",
+          REMOTE_RUNTIME_RESOURCE_FACTOR:
+            newSettings.REMOTE_RUNTIME_RESOURCE_FACTOR,
+        });
+      },
     });
   };
 
@@ -97,6 +96,7 @@ export function SettingsForm({ settings, models, onClose }: SettingsFormProps) {
             label="API Key"
             type="password"
             className="w-[680px]"
+            placeholder={isLLMKeySet ? "<hidden>" : ""}
             startContent={isLLMKeySet && <KeyStatusIcon isSet={isLLMKeySet} />}
           />
 
@@ -104,7 +104,7 @@ export function SettingsForm({ settings, models, onClose }: SettingsFormProps) {
             testId="llm-api-key-help-anchor"
             text="Don't know your API key?"
             linkText="Click here for instructions"
-            href="https://docs.all-hands.dev/modules/usage/llms"
+            href="https://docs.all-hands.dev/modules/usage/installation#getting-an-api-key"
           />
         </div>
 

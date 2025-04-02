@@ -25,6 +25,8 @@ import {
   displayErrorToast,
   displaySuccessToast,
 } from "#/utils/custom-toast-handlers";
+import { ProviderOptions } from "#/types/settings";
+import { useAuth } from "#/context/auth-context";
 
 const REMOTE_RUNTIME_OPTIONS = [
   { key: 1, label: "1x (2 core, 8G)" },
@@ -46,24 +48,35 @@ function AccountSettings() {
   } = useAIConfigOptions();
   const { mutate: saveSettings } = useSaveSettings();
   const { handleLogout } = useAppLogout();
+  const { providerTokensSet, providersAreSet } = useAuth();
 
   const isFetching = isFetchingSettings || isFetchingResources;
   const isSuccess = isSuccessfulSettings && isSuccessfulResources;
 
+  const isSaas = config?.APP_MODE === "saas";
+  const shouldHandleSpecialSaasCase =
+    config?.FEATURE_FLAGS.HIDE_LLM_SETTINGS && isSaas;
+
   const determineWhetherToToggleAdvancedSettings = () => {
+    if (shouldHandleSpecialSaasCase) return true;
+
     if (isSuccess) {
       return (
         isCustomModel(resources.models, settings.LLM_MODEL) ||
-        hasAdvancedSettingsSet(settings)
+        hasAdvancedSettingsSet({
+          ...settings,
+        })
       );
     }
 
     return false;
   };
 
-  const isSaas = config?.APP_MODE === "saas";
   const hasAppSlug = !!config?.APP_SLUG;
-  const isGitHubTokenSet = settings?.GITHUB_TOKEN_IS_SET;
+  const isGitHubTokenSet =
+    providerTokensSet.includes(ProviderOptions.github) || false;
+  const isGitLabTokenSet =
+    providerTokensSet.includes(ProviderOptions.gitlab) || false;
   const isLLMKeySet = settings?.LLM_API_KEY === "**********";
   const isAnalyticsEnabled = settings?.USER_CONSENTS_TO_ANALYTICS;
   const isAdvancedSettingsSet = determineWhetherToToggleAdvancedSettings();
@@ -102,56 +115,73 @@ function AccountSettings() {
 
     const userConsentsToAnalytics =
       formData.get("enable-analytics-switch")?.toString() === "on";
+    const enableMemoryCondenser =
+      formData.get("enable-memory-condenser-switch")?.toString() === "on";
+    const enableSoundNotifications =
+      formData.get("enable-sound-notifications-switch")?.toString() === "on";
+    const llmBaseUrl = formData.get("base-url-input")?.toString() || "";
+    const llmApiKey =
+      formData.get("llm-api-key-input")?.toString() ||
+      (isLLMKeySet
+        ? undefined // don't update if it's already set
+        : ""); // reset if it's first time save to avoid 500 error
 
-    saveSettings(
-      {
-        github_token:
-          formData.get("github-token-input")?.toString() || undefined,
-        LANGUAGE: languageValue,
-        user_consents_to_analytics: userConsentsToAnalytics,
-        LLM_MODEL: customLlmModel || fullLlmModel,
-        LLM_BASE_URL: formData.get("base-url-input")?.toString() || "",
-        LLM_API_KEY:
-          formData.get("llm-api-key-input")?.toString() ||
-          (isLLMKeySet
-            ? undefined // don't update if it's already set
-            : ""), // reset if it's first time save to avoid 500 error
-        AGENT: formData.get("agent-input")?.toString(),
-        SECURITY_ANALYZER:
-          formData.get("security-analyzer-input")?.toString() || "",
-        REMOTE_RUNTIME_RESOURCE_FACTOR:
-          remoteRuntimeResourceFactor ||
-          DEFAULT_SETTINGS.REMOTE_RUNTIME_RESOURCE_FACTOR,
-        CONFIRMATION_MODE: confirmationModeIsEnabled,
+    const githubToken = formData.get("github-token-input")?.toString();
+    const gitlabToken = formData.get("gitlab-token-input")?.toString();
+    // we don't want the user to be able to modify these settings in SaaS
+    const finalLlmModel = shouldHandleSpecialSaasCase
+      ? undefined
+      : customLlmModel || fullLlmModel;
+    const finalLlmBaseUrl = shouldHandleSpecialSaasCase
+      ? undefined
+      : llmBaseUrl;
+    const finalLlmApiKey = shouldHandleSpecialSaasCase ? undefined : llmApiKey;
+
+    const newSettings = {
+      provider_tokens:
+        githubToken || gitlabToken
+          ? {
+              github: githubToken || "",
+              gitlab: gitlabToken || "",
+            }
+          : undefined,
+      LANGUAGE: languageValue,
+      user_consents_to_analytics: userConsentsToAnalytics,
+      ENABLE_DEFAULT_CONDENSER: enableMemoryCondenser,
+      ENABLE_SOUND_NOTIFICATIONS: enableSoundNotifications,
+      LLM_MODEL: finalLlmModel,
+      LLM_BASE_URL: finalLlmBaseUrl,
+      LLM_API_KEY: finalLlmApiKey,
+      AGENT: formData.get("agent-input")?.toString(),
+      SECURITY_ANALYZER:
+        formData.get("security-analyzer-input")?.toString() || "",
+      REMOTE_RUNTIME_RESOURCE_FACTOR:
+        remoteRuntimeResourceFactor ||
+        DEFAULT_SETTINGS.REMOTE_RUNTIME_RESOURCE_FACTOR,
+      CONFIRMATION_MODE: confirmationModeIsEnabled,
+    };
+
+    saveSettings(newSettings, {
+      onSuccess: () => {
+        handleCaptureConsent(userConsentsToAnalytics);
+        displaySuccessToast("Settings saved");
+        setLlmConfigMode(isAdvancedSettingsSet ? "advanced" : "basic");
       },
-      {
-        onSuccess: () => {
-          handleCaptureConsent(userConsentsToAnalytics);
-          displaySuccessToast("Settings saved");
-          setLlmConfigMode(isAdvancedSettingsSet ? "advanced" : "basic");
-        },
-        onError: (error) => {
-          const errorMessage = retrieveAxiosErrorMessage(error);
-          displayErrorToast(errorMessage);
-        },
+      onError: (error) => {
+        const errorMessage = retrieveAxiosErrorMessage(error);
+        displayErrorToast(errorMessage);
       },
-    );
+    });
   };
 
   const handleReset = () => {
-    saveSettings(
-      {
-        ...DEFAULT_SETTINGS,
-        LLM_API_KEY: "", // reset LLM API key
+    saveSettings(null, {
+      onSuccess: () => {
+        displaySuccessToast("Settings reset");
+        setResetSettingsModalIsOpen(false);
+        setLlmConfigMode("basic");
       },
-      {
-        onSuccess: () => {
-          displaySuccessToast("Settings reset");
-          setResetSettingsModalIsOpen(false);
-          setLlmConfigMode(isAdvancedSettingsSet ? "advanced" : "basic");
-        },
-      },
-    );
+    });
   };
 
   React.useEffect(() => {
@@ -184,135 +214,166 @@ function AccountSettings() {
   return (
     <>
       <form
+        data-testid="account-settings-form"
         ref={formRef}
         action={onSubmit}
         className="flex flex-col grow overflow-auto"
       >
         <div className="flex flex-col gap-12 px-11 py-9">
-          <section className="flex flex-col gap-6">
-            <div className="flex items-center gap-7">
-              <h2 className="text-[28px] leading-8 tracking-[-0.02em] font-bold">
-                LLM Settings
-              </h2>
-              <SettingsSwitch
-                testId="advanced-settings-switch"
-                defaultIsToggled={isAdvancedSettingsSet}
-                onToggle={onToggleAdvancedMode}
-              >
-                Advanced
-              </SettingsSwitch>
-            </div>
+          {!shouldHandleSpecialSaasCase && (
+            <section
+              data-testid="llm-settings-section"
+              className="flex flex-col gap-6"
+            >
+              <div className="flex items-center gap-7">
+                <h2 className="text-[28px] leading-8 tracking-[-0.02em] font-bold">
+                  LLM Settings
+                </h2>
+                {!shouldHandleSpecialSaasCase && (
+                  <SettingsSwitch
+                    testId="advanced-settings-switch"
+                    defaultIsToggled={isAdvancedSettingsSet}
+                    onToggle={onToggleAdvancedMode}
+                  >
+                    Advanced
+                  </SettingsSwitch>
+                )}
+              </div>
 
-            {llmConfigMode === "basic" && (
-              <ModelSelector
-                models={modelsAndProviders}
-                currentModel={settings.LLM_MODEL}
-              />
-            )}
+              {llmConfigMode === "basic" && !shouldHandleSpecialSaasCase && (
+                <ModelSelector
+                  models={modelsAndProviders}
+                  currentModel={settings.LLM_MODEL}
+                />
+              )}
 
-            {llmConfigMode === "advanced" && (
-              <SettingsInput
-                testId="llm-custom-model-input"
-                name="llm-custom-model-input"
-                label="Custom Model"
-                defaultValue={settings.LLM_MODEL}
-                placeholder="anthropic/claude-3-5-sonnet-20241022"
-                type="text"
-                className="w-[680px]"
-              />
-            )}
-            {llmConfigMode === "advanced" && (
-              <SettingsInput
-                testId="base-url-input"
-                name="base-url-input"
-                label="Base URL"
-                defaultValue={settings.LLM_BASE_URL}
-                placeholder="https://api.openai.com"
-                type="text"
-                className="w-[680px]"
-              />
-            )}
+              {llmConfigMode === "advanced" && !shouldHandleSpecialSaasCase && (
+                <SettingsInput
+                  testId="llm-custom-model-input"
+                  name="llm-custom-model-input"
+                  label="Custom Model"
+                  defaultValue={settings.LLM_MODEL}
+                  placeholder="anthropic/claude-3-5-sonnet-20241022"
+                  type="text"
+                  className="w-[680px]"
+                />
+              )}
+              {llmConfigMode === "advanced" && !shouldHandleSpecialSaasCase && (
+                <SettingsInput
+                  testId="base-url-input"
+                  name="base-url-input"
+                  label="Base URL"
+                  defaultValue={settings.LLM_BASE_URL}
+                  placeholder="https://api.openai.com"
+                  type="text"
+                  className="w-[680px]"
+                />
+              )}
 
-            <SettingsInput
-              testId="llm-api-key-input"
-              name="llm-api-key-input"
-              label="API Key"
-              type="password"
-              className="w-[680px]"
-              startContent={
-                isLLMKeySet && <KeyStatusIcon isSet={isLLMKeySet} />
-              }
-              placeholder={isLLMKeySet ? "**********" : ""}
-            />
+              {!shouldHandleSpecialSaasCase && (
+                <SettingsInput
+                  testId="llm-api-key-input"
+                  name="llm-api-key-input"
+                  label="API Key"
+                  type="password"
+                  className="w-[680px]"
+                  startContent={
+                    isLLMKeySet && <KeyStatusIcon isSet={isLLMKeySet} />
+                  }
+                  placeholder={isLLMKeySet ? "<hidden>" : ""}
+                />
+              )}
 
-            <HelpLink
-              testId="llm-api-key-help-anchor"
-              text="Don't know your API key?"
-              linkText="Click here for instructions"
-              href="https://docs.all-hands.dev/modules/usage/llms"
-            />
+              {!shouldHandleSpecialSaasCase && (
+                <HelpLink
+                  testId="llm-api-key-help-anchor"
+                  text="Don't know your API key?"
+                  linkText="Click here for instructions"
+                  href="https://docs.all-hands.dev/modules/usage/installation#getting-an-api-key"
+                />
+              )}
 
-            {llmConfigMode === "advanced" && (
-              <SettingsDropdownInput
-                testId="agent-input"
-                name="agent-input"
-                label="Agent"
-                items={
-                  resources?.agents.map((agent) => ({
-                    key: agent,
-                    label: agent,
-                  })) || []
-                }
-                defaultSelectedKey={settings.AGENT}
-                isClearable={false}
-              />
-            )}
-
-            {isSaas && llmConfigMode === "advanced" && (
-              <SettingsDropdownInput
-                testId="runtime-settings-input"
-                name="runtime-settings-input"
-                label="Runtime Settings"
-                items={REMOTE_RUNTIME_OPTIONS}
-                defaultSelectedKey={settings.REMOTE_RUNTIME_RESOURCE_FACTOR?.toString()}
-                isDisabled
-                isClearable={false}
-              />
-            )}
-
-            {llmConfigMode === "advanced" && (
-              <SettingsSwitch
-                testId="enable-confirmation-mode-switch"
-                onToggle={setConfirmationModeIsEnabled}
-                defaultIsToggled={!!settings.CONFIRMATION_MODE}
-                isBeta
-              >
-                Enable confirmation mode
-              </SettingsSwitch>
-            )}
-            {llmConfigMode === "advanced" && confirmationModeIsEnabled && (
-              <div>
+              {llmConfigMode === "advanced" && (
                 <SettingsDropdownInput
-                  testId="security-analyzer-input"
-                  name="security-analyzer-input"
-                  label="Security Analyzer"
+                  testId="agent-input"
+                  name="agent-input"
+                  label="Agent"
                   items={
-                    resources?.securityAnalyzers.map((analyzer) => ({
-                      key: analyzer,
-                      label: analyzer,
+                    resources?.agents.map((agent) => ({
+                      key: agent,
+                      label: agent,
                     })) || []
                   }
-                  defaultSelectedKey={settings.SECURITY_ANALYZER}
-                  isClearable
-                  showOptionalTag
+                  defaultSelectedKey={settings.AGENT}
+                  isClearable={false}
                 />
-              </div>
-            )}
-          </section>
+              )}
+
+              {isSaas && llmConfigMode === "advanced" && (
+                <SettingsDropdownInput
+                  testId="runtime-settings-input"
+                  name="runtime-settings-input"
+                  label={
+                    <>
+                      Runtime Settings (
+                      <a href="mailto:contact@all-hands.dev">
+                        get in touch for access
+                      </a>
+                      )
+                    </>
+                  }
+                  items={REMOTE_RUNTIME_OPTIONS}
+                  defaultSelectedKey={settings.REMOTE_RUNTIME_RESOURCE_FACTOR?.toString()}
+                  isDisabled
+                  isClearable={false}
+                />
+              )}
+
+              {llmConfigMode === "advanced" && (
+                <SettingsSwitch
+                  testId="enable-confirmation-mode-switch"
+                  onToggle={setConfirmationModeIsEnabled}
+                  defaultIsToggled={!!settings.CONFIRMATION_MODE}
+                  isBeta
+                >
+                  Enable confirmation mode
+                </SettingsSwitch>
+              )}
+
+              {llmConfigMode === "advanced" && (
+                <SettingsSwitch
+                  testId="enable-memory-condenser-switch"
+                  name="enable-memory-condenser-switch"
+                  defaultIsToggled={!!settings.ENABLE_DEFAULT_CONDENSER}
+                >
+                  Enable memory condensation
+                </SettingsSwitch>
+              )}
+
+              {llmConfigMode === "advanced" && confirmationModeIsEnabled && (
+                <div>
+                  <SettingsDropdownInput
+                    testId="security-analyzer-input"
+                    name="security-analyzer-input"
+                    label="Security Analyzer"
+                    items={
+                      resources?.securityAnalyzers.map((analyzer) => ({
+                        key: analyzer,
+                        label: analyzer,
+                      })) || []
+                    }
+                    defaultSelectedKey={settings.SECURITY_ANALYZER}
+                    isClearable
+                    showOptionalTag
+                  />
+                </div>
+              )}
+            </section>
+          )}
 
           <section className="flex flex-col gap-6">
             <h2 className="text-[28px] leading-8 tracking-[-0.02em] font-bold">
-              GitHub Settings
+              Git Provider Settings
             </h2>
             {isSaas && hasAppSlug && (
               <Link
@@ -338,26 +399,87 @@ function AccountSettings() {
                       <KeyStatusIcon isSet={!!isGitHubTokenSet} />
                     )
                   }
-                  placeholder={isGitHubTokenSet ? "**********" : ""}
+                  placeholder={isGitHubTokenSet ? "<hidden>" : ""}
+                />
+                <p data-testid="github-token-help-anchor" className="text-xs">
+                  {" "}
+                  Generate a token on{" "}
+                  <b>
+                    {" "}
+                    <a
+                      href="https://github.com/settings/tokens/new?description=openhands-app&scopes=repo,user,workflow"
+                      target="_blank"
+                      className="underline underline-offset-2"
+                      rel="noopener noreferrer"
+                    >
+                      GitHub
+                    </a>{" "}
+                  </b>
+                  or see the{" "}
+                  <b>
+                    <a
+                      href="https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token"
+                      target="_blank"
+                      className="underline underline-offset-2"
+                      rel="noopener noreferrer"
+                    >
+                      documentation
+                    </a>
+                  </b>
+                  .
+                </p>
+
+                <SettingsInput
+                  testId="gitlab-token-input"
+                  name="gitlab-token-input"
+                  label="GitLab Token"
+                  type="password"
+                  className="w-[680px]"
+                  startContent={
+                    isGitLabTokenSet && (
+                      <KeyStatusIcon isSet={!!isGitLabTokenSet} />
+                    )
+                  }
+                  placeholder={isGitHubTokenSet ? "<hidden>" : ""}
                 />
 
-                <HelpLink
-                  testId="github-token-help-anchor"
-                  text="Get your token"
-                  linkText="here"
-                  href="https://github.com/settings/tokens/new?description=openhands-app&scopes=repo,user,workflow"
-                />
+                <p data-testId="gitlab-token-help-anchor" className="text-xs">
+                  {" "}
+                  Generate a token on{" "}
+                  <b>
+                    {" "}
+                    <a
+                      href="https://gitlab.com/-/user_settings/personal_access_tokens?name=openhands-app&scopes=api,read_user,read_repository,write_repository"
+                      target="_blank"
+                      className="underline underline-offset-2"
+                      rel="noopener noreferrer"
+                    >
+                      GitLab
+                    </a>{" "}
+                  </b>
+                  or see the{" "}
+                  <b>
+                    <a
+                      href="https://docs.gitlab.com/user/profile/personal_access_tokens/"
+                      target="_blank"
+                      className="underline underline-offset-2"
+                      rel="noopener noreferrer"
+                    >
+                      documentation
+                    </a>
+                  </b>
+                  .
+                </p>
+                <BrandButton
+                  type="button"
+                  variant="secondary"
+                  onClick={handleLogout}
+                  isDisabled={!providersAreSet}
+                >
+                  Disconnect Tokens
+                </BrandButton>
               </>
             )}
-
-            <BrandButton
-              type="button"
-              variant="secondary"
-              onClick={handleLogout}
-              isDisabled={!isGitHubTokenSet}
-            >
-              Disconnect from GitHub
-            </BrandButton>
           </section>
 
           <section className="flex flex-col gap-6">
@@ -383,6 +505,14 @@ function AccountSettings() {
               defaultIsToggled={!!isAnalyticsEnabled}
             >
               Enable analytics
+            </SettingsSwitch>
+
+            <SettingsSwitch
+              testId="enable-sound-notifications-switch"
+              name="enable-sound-notifications-switch"
+              defaultIsToggled={!!settings.ENABLE_SOUND_NOTIFICATIONS}
+            >
+              Enable sound notifications
             </SettingsSwitch>
           </section>
         </div>
@@ -411,7 +541,7 @@ function AccountSettings() {
         <ModalBackdrop>
           <div
             data-testid="reset-modal"
-            className="bg-base p-4 rounded-xl flex flex-col gap-4"
+            className="bg-base-secondary p-4 rounded-xl flex flex-col gap-4 border border-tertiary"
           >
             <p>Are you sure you want to reset all settings?</p>
             <div className="w-full flex gap-2">

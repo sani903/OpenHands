@@ -5,20 +5,23 @@ from litellm import ChatCompletionMessageToolCall
 
 from openhands.agenthub.codeact_agent.codeact_agent import CodeActAgent
 from openhands.agenthub.codeact_agent.function_calling import (
-    _BROWSER_DESCRIPTION,
-    _BROWSER_TOOL_DESCRIPTION,
     BrowserTool,
-    CmdRunTool,
     IPythonTool,
     LLMBasedFileEditTool,
-    StrReplaceEditorTool,
     WebReadTool,
+    create_cmd_run_tool,
+    create_str_replace_editor_tool,
     get_tools,
     response_to_actions,
+)
+from openhands.agenthub.codeact_agent.tools.browser import (
+    _BROWSER_DESCRIPTION,
+    _BROWSER_TOOL_DESCRIPTION,
 )
 from openhands.controller.state.state import State
 from openhands.core.config import AgentConfig, LLMConfig
 from openhands.core.exceptions import FunctionCallNotExistsError
+from openhands.core.message import ImageContent, Message, TextContent
 from openhands.events.action import (
     CmdRunAction,
     MessageAction,
@@ -116,6 +119,7 @@ def test_get_tools_with_options():
 
 
 def test_cmd_run_tool():
+    CmdRunTool = create_cmd_run_tool()
     assert CmdRunTool['type'] == 'function'
     assert CmdRunTool['function']['name'] == 'execute_bash'
     assert 'command' in CmdRunTool['function']['parameters']['properties']
@@ -146,6 +150,7 @@ def test_llm_based_file_edit_tool():
 
 
 def test_str_replace_editor_tool():
+    StrReplaceEditorTool = create_str_replace_editor_tool()
     assert StrReplaceEditorTool['type'] == 'function'
     assert StrReplaceEditorTool['function']['name'] == 'str_replace_editor'
 
@@ -233,7 +238,11 @@ def test_step_with_no_pending_actions(mock_state: State):
     mock_response.choices[0].message.content = 'Task completed'
     mock_response.choices[0].message.tool_calls = []
 
+    mock_config = Mock()
+    mock_config.model = 'mock_model'
+
     llm = Mock()
+    llm.config = mock_config
     llm.completion = Mock(return_value=mock_response)
     llm.is_function_calling_active = Mock(return_value=True)  # Enable function calling
     llm.is_caching_prompt_active = Mock(return_value=False)
@@ -255,6 +264,28 @@ def test_step_with_no_pending_actions(mock_state: State):
     action = agent.step(mock_state)
     assert isinstance(action, MessageAction)
     assert action.content == 'Task completed'
+
+
+def test_correct_tool_description_loaded_based_on_model_name(mock_state: State):
+    """Tests that the simplified tool descriptions are loaded for specific models."""
+    o3_mock_config = Mock()
+    o3_mock_config.model = 'mock_o3_model'
+
+    llm = Mock()
+    llm.config = o3_mock_config
+
+    agent = CodeActAgent(llm=llm, config=AgentConfig())
+    for tool in agent.tools:
+        # Assert all descriptions have less than 1024 characters
+        assert len(tool['function']['description']) < 1024
+
+    sonnet_mock_config = Mock()
+    sonnet_mock_config.model = 'mock_sonnet_model'
+
+    llm.config = sonnet_mock_config
+    agent = CodeActAgent(llm=llm, config=AgentConfig())
+    # Assert existence of the detailed tool descriptions that are longer than 1024 characters
+    assert any(len(tool['function']['description']) > 1024 for tool in agent.tools)
 
 
 def test_mismatched_tool_call_events(mock_state: State):
@@ -293,19 +324,76 @@ def test_mismatched_tool_call_events(mock_state: State):
     # 2. The action message, and
     # 3. The observation message
     mock_state.history = [action, observation]
-    messages = agent._get_messages(mock_state)
+    messages = agent._get_messages(mock_state.history)
     assert len(messages) == 3
 
     # The same should hold if the events are presented out-of-order
     mock_state.history = [observation, action]
-    messages = agent._get_messages(mock_state)
+    messages = agent._get_messages(mock_state.history)
     assert len(messages) == 3
 
     # If only one of the two events is present, then we should just get the system message
     mock_state.history = [action]
-    messages = agent._get_messages(mock_state)
+    messages = agent._get_messages(mock_state.history)
     assert len(messages) == 1
 
     mock_state.history = [observation]
-    messages = agent._get_messages(mock_state)
+    messages = agent._get_messages(mock_state.history)
     assert len(messages) == 1
+
+
+def test_enhance_messages_adds_newlines_between_consecutive_user_messages(
+    agent: CodeActAgent,
+):
+    """Test that _enhance_messages adds newlines between consecutive user messages."""
+    # Set up the prompt manager
+    agent.prompt_manager = Mock()
+    agent.prompt_manager.add_examples_to_initial_message = Mock()
+    agent.prompt_manager.add_info_to_initial_message = Mock()
+    agent.prompt_manager.enhance_message = Mock()
+
+    # Create consecutive user messages with various content types
+    messages = [
+        # First user message with TextContent only
+        Message(role='user', content=[TextContent(text='First user message')]),
+        # Second user message with TextContent only - should get newlines added
+        Message(role='user', content=[TextContent(text='Second user message')]),
+        # Assistant message
+        Message(role='assistant', content=[TextContent(text='Assistant response')]),
+        # Third user message with TextContent only - shouldn't get newlines
+        Message(role='user', content=[TextContent(text='Third user message')]),
+        # Fourth user message with ImageContent first, TextContent second - should get newlines
+        Message(
+            role='user',
+            content=[
+                ImageContent(image_urls=['https://example.com/image.jpg']),
+                TextContent(text='Fourth user message with image'),
+            ],
+        ),
+        # Fifth user message with only ImageContent - no TextContent to modify
+        Message(
+            role='user',
+            content=[
+                ImageContent(image_urls=['https://example.com/another-image.jpg'])
+            ],
+        ),
+    ]
+
+    # Call _enhance_messages
+    enhanced_messages = agent._enhance_messages(messages)
+
+    # Verify newlines were added correctly
+    assert enhanced_messages[1].content[0].text.startswith('\n\n')
+    assert enhanced_messages[1].content[0].text == '\n\nSecond user message'
+
+    # Third message follows assistant, so shouldn't have newlines
+    assert not enhanced_messages[3].content[0].text.startswith('\n\n')
+    assert enhanced_messages[3].content[0].text == 'Third user message'
+
+    # Fourth message follows user, so should have newlines in its TextContent
+    assert enhanced_messages[4].content[1].text.startswith('\n\n')
+    assert enhanced_messages[4].content[1].text == '\n\nFourth user message with image'
+
+    # Fifth message only has ImageContent, no TextContent to modify
+    assert len(enhanced_messages[5].content) == 1
+    assert isinstance(enhanced_messages[5].content[0], ImageContent)
