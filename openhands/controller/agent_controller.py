@@ -2,6 +2,7 @@ import asyncio
 import copy
 import os
 import traceback
+import json
 from typing import Callable, ClassVar, Type
 
 import litellm  # noqa
@@ -64,7 +65,8 @@ from openhands.events.observation import (
     Observation,
 )
 from openhands.events.serialization.event import event_to_trajectory, truncate_content
-from openhands.llm.checklist_model import LocalChecklistModel
+from openhands.llm.preconditions_model import LocalPreConditionsModel
+from openhands.llm.postconditions_model import LocalPostConditionsModel
 from openhands.llm.llm import LLM
 from openhands.llm.metrics import Metrics, TokenUsage
 
@@ -110,7 +112,9 @@ class AgentController:
         headless_mode: bool = True,
         status_callback: Callable | None = None,
         replay_events: list[Event] | None = None,
-        checklist_model: LocalChecklistModel | None = None,
+        preconditions_model: LocalPreConditionsModel | None = None,
+        postconditions_model: LocalPostConditionsModel | None = None,
+        to_refine: bool = False,
     ):
         """Initializes a new instance of the AgentController class.
 
@@ -166,7 +170,15 @@ class AgentController:
 
         # replay-related
         self._replay_manager = ReplayManager(replay_events)
-        self.checklist_model = checklist_model
+
+        # Checklist generation
+        self.preconditions_model = preconditions_model
+        self.postconditions_model = postconditions_model
+        # If postconditions_model is not None, and self.to_refine is True, then we pass the checklist and double the max_iterations to allow the model a chance to refine the task.
+        # If self.to_refine is False, then we pass the checklist and expect a message back from the agent on how many items it has completed.
+        self.to_refine = to_refine
+        self.postconditions_passed = False
+        self.initial_task = None
 
     async def close(self, set_stop_state=True) -> None:
         """Closes the agent controller, canceling any ongoing tasks and unsubscribing from the event stream.
@@ -403,6 +415,30 @@ class AgentController:
             return
 
         elif isinstance(action, AgentFinishAction):
+            if self.postconditions_model and not self.postconditions_passed:
+                postconditions = await self._generate_postconditions(self.initial_task)
+                self.state.postconditions = postconditions
+                self.postconditions_passed = True
+                if self.to_refine:
+                    refinement_prompt = "Check how many of the items have been completed from this checklist and refine your solution based on the incomplete items."
+                    self.state.max_iterations = (
+                        self.state.iteration + self._initial_max_iterations
+                    )
+                    self.event_stream.add_event(
+                        MessageAction(content=f"{refinement_prompt}\nCHECKLIST:\n{postconditions}"),
+                        EventSource.USER,
+                    )
+                else:
+                    completed_items_prompt = "Check how many of the items have been completed from this checklist and return the number of completed items within <completed></completed> tags."
+                    # Two turns added for buffer
+                    self.state.max_iterations = (self.state.iteration + 2)
+                    self.event_stream.add_event(
+                        MessageAction(content=f"{completed_items_prompt}\nCHECKLIST:\n{postconditions}"),
+                        EventSource.USER,
+                    )
+                await self.set_agent_state_to(AgentState.RUNNING)                
+                return
+                
             self.state.outputs = action.outputs
             self.state.metrics.merge(self.state.local_metrics)
             await self.set_agent_state_to(AgentState.FINISHED)
@@ -453,9 +489,10 @@ class AgentController:
         """
         if action.source == EventSource.USER:
             # Only augment the very first user message
-            if not self._first_user_message_processed and self.checklist_model:
+            if not self._first_user_message_processed and self.preconditions_model:
+                self.initial_task = action.content
                 # Generate checklist using the LLM client
-                checklist = await self.checklist_model.generate_checklist(
+                checklist = await self.preconditions_model.generate_checklist(
                     action.content
                 )
                 # Use the helper to build an augmented message
@@ -463,7 +500,8 @@ class AgentController:
                 # Replace the original content with the augmented content
                 action.content = augmented_action.content
                 self._first_user_message_processed = True
-                self.state.checklist = checklist
+                self.state.preconditions = checklist
+                
 
             # Use info level if LOG_ALL_EVENTS is set
             log_level = (
@@ -749,6 +787,34 @@ class AgentController:
 
         stop_step = False
         if self.state.iteration >= self.state.max_iterations:
+            if self.postconditions_model and not self.postconditions_passed:
+                # Generate postconditions with the formatted trajectory
+                postconditions = await self._generate_postconditions(self.initial_task)
+                self.state.postconditions = postconditions
+                self.postconditions_passed = True
+                if self.to_refine:
+                    refinement_prompt = "You've reached the maximum number of steps. Check how many of the items have been completed from this checklist and refine your solution based on the incomplete items."
+                    # Extend iterations to allow agent to continue
+                    self.state.max_iterations = (
+                        self.state.iteration + self._initial_max_iterations
+                    )
+                    # Add the event to the event stream
+                    self.event_stream.add_event(
+                        MessageAction(content=f"{refinement_prompt}\nCHECKLIST:\n{postconditions}"),
+                        EventSource.USER,
+                    )                    
+                    # Return early to let the agent continue
+                    return
+                else:
+                    completed_items_prompt = "You've reached the maximum number of steps. Check how many of the items have been completed from this checklist and return the number of completed items within <completed></completed> tags."
+                    # Add buffer iterations
+                    self.state.max_iterations = (self.state.iteration + 2)
+                    self.event_stream.add_event(
+                        MessageAction(content=f"{completed_items_prompt}\nCHECKLIST:\n{postconditions}"),
+                        EventSource.USER,
+                    )
+                    # Return early to let the agent continue
+                    return
             stop_step = await self._handle_traffic_control(
                 'iteration', self.state.iteration, self.state.max_iterations
             )
@@ -763,6 +829,51 @@ class AgentController:
             return
 
         if self._is_stuck():
+            # Only if we have a postconditions model and haven't passed the check yet
+            if self.postconditions_model and not self.postconditions_passed:
+                # Generate postconditions with the formatted trajectory
+                postconditions = await self._generate_postconditions(self.initial_task)
+                self.state.postconditions = postconditions
+                self.postconditions_passed = True
+                if self.to_refine:
+                    refinement_prompt = "Check how many of the items have been completed from this checklist and refine your solution based on the incomplete items."
+                    # Extend iterations to allow agent to continue
+                    self.state.max_iterations = (
+                        self.state.iteration + self._initial_max_iterations
+                    )
+                    # Add the event to the event stream
+                    self.event_stream.add_event(
+                        MessageAction(content=f"{refinement_prompt}\nCHECKLIST:\n{postconditions}"),
+                        EventSource.USER,
+                    )
+                                        
+                    # Reset the stuck detector
+                    self._stuck_detector.reset()
+                    
+                    # Set the agent back to RUNNING state
+                    await self.set_agent_state_to(AgentState.RUNNING)
+                    
+                    # Return early to prevent handling the stuck error
+                    return
+                else:
+                    completed_items_prompt = "Check how many of the items have been completed from this checklist and return the number of completed items within <completed></completed> tags."
+                    # Add some buffer iterations
+                    self.state.max_iterations = (self.state.iteration + 2)
+                    self.event_stream.add_event(
+                        MessageAction(content=f"{completed_items_prompt}\nCHECKLIST:\n{postconditions}"),
+                        EventSource.USER,
+                    )                    
+                    
+                    # Reset the stuck detector
+                    self._stuck_detector.reset()
+                    
+                    # Set the agent back to RUNNING state
+                    await self.set_agent_state_to(AgentState.RUNNING)
+                    
+                    # Return early to prevent handling the stuck error
+                    return
+            
+            # If we get here, either postconditions check isn't needed or already done
             await self._react_to_exception(
                 AgentStuckInLoopError('Agent got stuck in a loop')
             )
@@ -1282,3 +1393,103 @@ class AgentController:
         Here, the augmented task is added to the event stream so that it's treated as the incoming user message.
         """
         self.event_stream.add_event(augmented_task, EventSource.USER)
+
+    async def _generate_postconditions(
+        self, task: str
+    ) -> str:
+        """
+        Given a user task and the trajectory, generate a checklist.
+        """
+        trajectory_str = self.get_formatted_trajectory_string()
+        checklist = await self.postconditions_model.generate_checklist(
+            task, trajectory_str
+        )
+        return checklist
+
+    def get_current_trajectory(self, include_screenshots: bool = False) -> list[dict]:
+        """
+        Returns the current trajectory of events without requiring the controller to be closed.
+        
+        Args:
+            include_screenshots (bool): Whether to include screenshots in the trajectory.
+            
+        Returns:
+            list[dict]: A list of events converted to trajectory format.
+        """
+        # Get all events from the event stream
+        start_id = self.state.start_id if self.state.start_id >= 0 else 0
+        end_id = self.event_stream.get_latest_event_id()
+        
+        # Get events, filtering out backend events and hidden events
+        events = list(
+            self.event_stream.get_events(
+                start_id=start_id,
+                end_id=end_id,
+                reverse=False,
+                filter_out_type=self.filter_out,
+                filter_hidden=True,
+            )
+        )
+        
+        # Convert each event to trajectory format
+        return [
+            event_to_trajectory(event, include_screenshots) 
+            for event in events
+        ]
+
+    def get_formatted_trajectory_string(self, include_screenshots: bool = False) -> str:
+        """
+        Get the current trajectory as a formatted string for prompting another model.
+        Matches the format from the provided code sample.
+        
+        Args:
+            include_screenshots (bool): Whether to include screenshots in the trajectory.
+            
+        Returns:
+            str: A formatted string representation of the trajectory.
+        """
+        # Get trajectory data
+        trajectory = self.get_current_trajectory(include_screenshots)
+        
+        if not trajectory:
+            return "Empty trajectory"
+        
+        formatted_output = []
+        
+        for i, event in enumerate(trajectory):
+            # Get event type - determine if it's an action or observation
+            event_type = None
+            if 'action' in event:
+                event_type = 'action'
+            elif 'observation' in event:
+                event_type = 'observation'
+            else:
+                event_type = 'unknown'
+            
+            # Get source if available
+            source = event.get('source', '').lower()
+            
+            # Get content
+            content = event.get('content', '')
+            if not content and 'args' in event and 'content' in event['args']:
+                content = event['args']['content']
+            
+            # Determine role based on event type and source
+            if event_type == 'action' and source == 'user':
+                role = 'USER'
+            elif event_type == 'action' and source == 'agent':
+                role = 'ASSISTANT'
+            elif event_type == 'observation':
+                role = 'OBSERVATION'
+            else:
+                role = event_type.upper()
+            
+            # Truncate long content if it's a string
+            if isinstance(content, str) and len(content) > 500:
+                content = content[:250] + "..." + content[-250:]
+            
+            # Format according to the example code's output format
+            formatted_output.append(f"{role} (Step {i+1}):\n{content}\n")
+        
+        # Join with newlines as in the original format
+        return "\n".join(formatted_output)

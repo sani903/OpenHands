@@ -30,7 +30,8 @@ from openhands.events.action.action import Action
 from openhands.events.event import Event
 from openhands.events.observation import AgentStateChangedObservation
 from openhands.io import read_input, read_task
-from openhands.llm.checklist_model import LocalChecklistModel
+from openhands.llm.preconditions_model import LocalPreConditionsModel
+from openhands.llm.postconditions_model import LocalPostConditionsModel
 from openhands.memory.memory import Memory
 from openhands.runtime.base import Runtime
 from openhands.utils.async_utils import call_async_from_sync
@@ -118,7 +119,8 @@ async def run_controller(
 
     event_stream = runtime.event_stream
 
-    checklist_model = LocalChecklistModel(config.checklist_model_path)
+    preconditions_model = LocalPreConditionsModel(config.preconditions_model_path)
+    postconditions_model = LocalPostConditionsModel(config.postconditions_model_path)
 
     # when memory is created, it will load the microagents from the selected repository
     if memory is None:
@@ -143,7 +145,8 @@ async def run_controller(
         runtime,
         config,
         replay_events=replay_events,
-        checklist_model=checklist_model,
+        preconditions_model=preconditions_model,
+        postconditions_model=postconditions_model,
     )
 
     assert isinstance(
@@ -269,8 +272,6 @@ if __name__ == '__main__':
 
     config: AppConfig = setup_config_from_args(args)
 
-    # Add path to local checklist model in AppConfig. What should be the default value?
-    config.checklist_model_path = os.getenv('CHECKLIST_MODEL_PATH', 'test')
     # Read task from file, CLI args, or stdin
     task_str = read_task(args, config.cli_multiline_input)
 

@@ -36,6 +36,12 @@ class StuckDetector:
         Returns:
             bool: True if the agent is stuck in a loop, False otherwise.
         """
+        # Check if we recently reset the detector
+        if hasattr(self.state, 'stuck_detector_reset_time') and self.state.stuck_detector_reset_time:
+            # If the detector was reset within the last 3 iterations, don't detect loops yet
+            if self.state.iteration - self.state.stuck_detector_reset_time[-1] < 3:
+                return False
+
         if not headless_mode:
             # In interactive mode, only look at history after the last user message
             last_user_msg_idx = -1
@@ -386,3 +392,20 @@ class StuckDetector:
         else:
             # this is the default comparison
             return obj1 == obj2
+
+    def reset(self):
+        """
+        Resets the detector's state to allow the agent to continue.
+        This is typically called after intervention has been added to the event stream.
+        It prevents the detector from immediately identifying the same pattern again.
+        """
+        # The StuckDetector doesn't maintain much internal state beyond the reference to the agent's state
+        # We can't modify the history directly, but we can set a flag in the state to indicate
+        # that we've recently reset the detector
+        if not hasattr(self.state, 'stuck_detector_reset_time'):
+            self.state.stuck_detector_reset_time = []
+        
+        # Add the current iteration to the reset times
+        self.state.stuck_detector_reset_time.append(self.state.iteration)
+        
+        logger.info(f"Stuck detector reset at iteration {self.state.iteration}")

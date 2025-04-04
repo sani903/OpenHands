@@ -25,7 +25,8 @@ from litellm.utils import create_pretrained_tokenizer
 
 from openhands.core.logger import openhands_logger as logger
 from openhands.core.message import Message
-from openhands.llm.checklist_model import LocalChecklistModel
+from openhands.llm.preconditions_model import LocalPreConditionsModel
+from openhands.llm.postconditions_model import LocalPostConditionsModel
 from openhands.llm.debug_mixin import DebugMixin
 from openhands.llm.fn_call_converter import (
     STOP_WORDS,
@@ -108,7 +109,8 @@ class LLM(RetryMixin, DebugMixin):
         )
         self.cost_metric_supported: bool = True
         self.config: LLMConfig = copy.deepcopy(config)
-        self.checklist_model = LocalChecklistModel(self.config.checklist_model_path)
+        self.preconditions_model = LocalPreConditionsModel(self.config.preconditions_model_path)
+        self.postconditions_model = LocalPostConditionsModel(self.config.postconditions_model_path)
 
         self.model_info: ModelInfo | None = None
         self.retry_listener = retry_listener
@@ -459,8 +461,11 @@ class LLM(RetryMixin, DebugMixin):
                 model=self.config.model
             )
 
-    async def generate_checklist(self, prompt):
-        return await self.checklist_model.generate_checklist(prompt)
+    async def generate_preconditions(self, prompt):
+        return await self.preconditions_model.generate_preconditions(prompt)
+
+    async def generate_postconditions(self, prompt):
+        return await self.postconditions_model.generate_postconditions(prompt)
 
     def vision_is_active(self) -> bool:
         with warnings.catch_warnings():

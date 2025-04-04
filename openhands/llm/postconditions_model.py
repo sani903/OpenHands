@@ -1,0 +1,84 @@
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+
+class LocalPostConditionsModel:
+    def __init__(self, model_path):
+        # dry run without generations
+        if model_path == 'test':
+            self.model = None
+        else:
+            self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+            self.model = AutoModelForCausalLM.from_pretrained(
+                model_path, torch_dtype=torch.bfloat16, device_map='auto'
+            )
+
+    async def generate_postconditions(self, prompt, trajectory):
+        if not self.model:
+            checklist = 'Sample checklist'
+        elif self.model.startswith('openai') or model_path.startswith('neulab') or model_path.startswith('litellm'):
+            checklist_generation_prompt = (
+                'You are analyzing a software engineering task.\n'
+                'Your task is to generate a checklist of criteria that must be satisfied to have a successful solution based on the <issue_description> and the <trajectort> for code context.\n'
+                'Ensure the checklist is concise and limited to a maximum of 5 essential items.'
+                f'<issue_description>\n'
+                f'{prompt}\n'
+                '</issue_description>\n\n'
+                f'<trajectory>\n'
+                f'{trajectory}\n'
+                '</trajectory>\n\n'
+                'Format each checklist item within <checklist_item> and </checklist_item> tags.'
+            )
+            client = OpenAI(
+                api_key=os.environ.get("LITELLM_API_KEY"),
+                base_url="https://cmu.litellm.ai",
+            )
+            try:
+                response = client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.0,
+                    max_tokens=2000
+                )
+                response_statement = response.choices[0].message.content
+                try:
+                    checklist = ""
+                    items = re.findall(r'<checklist_item>(.*?)</checklist_item>', response_statement, re.DOTALL)
+                    # Convert items to a bullet point list format
+                    if items:
+                        formatted_list = "\n".join([f"- {item.strip()}" for item in items])
+                        checklist = formatted_list
+                except Exception as e:
+                    print(f"Error extracting checklist items: {e}")
+                    checklist = ""
+            except Exception as e:
+                print(f"Error calling model API: {e}")
+        else:
+            checklist_generation_prompt = (
+                'You are analyzing a software engineering task.\n'
+                'Your task is to generate a checklist of criteria that must be satisfied to have a successful solution based on the <issue_description> and the <trajectort> for code context.\n'
+                'Ensure the checklist is concise and limited to a maximum of 5 essential items.'
+                f'<issue_description>\n'
+                f'{prompt}\n'
+                '</issue_description>\n\n'
+                f'<trajectory>\n'
+                f'{trajectory}\n'
+                '</trajectory>\n\n'
+            )
+
+            inputs = self.tokenizer(
+                checklist_generation_prompt, return_tensors='pt'
+            ).to(self.model.device)
+            outputs = self.model.generate(
+                **inputs,
+                max_new_tokens=256,
+                temperature=0.7,
+                top_p=0.95,
+                do_sample=True,
+            )
+
+            checklist = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        return checklist

@@ -9,7 +9,7 @@ from types import TracebackType
 from typing import Any, Literal, Mapping, TextIO
 
 import litellm
-from pythonjsonlogger.json import JsonFormatter
+from pythonjsonlogger import jsonlogger
 from termcolor import colored
 
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO').upper()
@@ -305,7 +305,7 @@ def get_file_handler(
 
 
 def json_formatter():
-    return JsonFormatter(
+    return jsonlogger.JsonFormatter()(
         '{message}{levelname}',
         style='{',
         rename_fields={'levelname': LOG_JSON_LEVEL_KEY},

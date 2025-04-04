@@ -537,8 +537,26 @@ def get_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
     )
+    # Add arguments for preconditions and postconditions model paths
+    parser.add_argument(
+        '--preconditions-model-path',
+        type=str,
+        help='Path or HF model name for preconditions checklist generation',
+        default=None,
+    )
+    parser.add_argument(
+        '--postconditions-model-path',
+        type=str,
+        help='Path or HF model name for postconditions checklist generation',
+        default=None,
+    )
+    parser.add_argument(
+        '--to-refine',
+        type=str,
+        help='Specify the items to refine',
+        default=None,
+    )
     return parser
-
 
 def parse_arguments() -> argparse.Namespace:
     """Parse command line arguments."""
@@ -573,12 +591,12 @@ def load_app_config(
 
 def setup_config_from_args(args: argparse.Namespace) -> AppConfig:
     """Load config from toml and override with command line arguments.
-
+    
     Common setup used by both CLI and main.py entry points.
     """
     # Load base config from toml and env vars
     config = load_app_config(config_file=args.config_file)
-
+    
     # Override with command line arguments if provided
     if args.llm_config:
         # if we didn't already load it, get it from the toml file
@@ -589,19 +607,29 @@ def setup_config_from_args(args: argparse.Namespace) -> AppConfig:
         if llm_config is None:
             raise ValueError(f'Invalid toml file, cannot read {args.llm_config}')
         config.set_llm_config(llm_config)
-
+    
     # Override default agent if provided
     if args.agent_cls:
         config.default_agent = args.agent_cls
-
+    
     # Set max iterations and max budget per task if provided, otherwise fall back to config values
     if args.max_iterations is not None:
         config.max_iterations = args.max_iterations
     if args.max_budget_per_task is not None:
         config.max_budget_per_task = args.max_budget_per_task
-
+    
     # Read selected repository in config for use by CLI and main.py
     if args.selected_repo is not None:
         config.sandbox.selected_repo = args.selected_repo
+    
+    # Add command line arguments for preconditions and postconditions model paths
+    if args.preconditions_model_path is not None:
+        config.preconditions_model_path = args.preconditions_model_path
+    
+    if args.postconditions_model_path is not None:
+        config.postconditions_model_path = args.postconditions_model_path
 
+    if args.to_refine is not None:
+        config.to_refine = args.to_refine
+    
     return config

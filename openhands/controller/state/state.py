@@ -97,7 +97,8 @@ class State:
     # start_id and end_id track the range of events in history
     start_id: int = -1
     end_id: int = -1
-    checklist: Optional[str] = None
+    preconditions: Optional[str] = None
+    postconditions: Optional[str] = None
 
     delegates: dict[tuple[int, int], tuple[str, str]] = field(default_factory=dict)
     # NOTE: This will never be used by the controller, but it can be used by different
@@ -184,8 +185,10 @@ class State:
         # make sure we always have the attribute history
         if not hasattr(self, 'history'):
             self.history = []
-        if not hasattr(self, 'checklist'):
-            self.checklist = None
+        if not hasattr(self, 'preconditions'):
+            self.preconditions = None
+        if not hasattr(self, 'postconditions'):
+            self.postconditions = None
 
     def get_current_user_intent(self) -> tuple[str | None, list[str] | None]:
         """Returns the latest user message and image(if provided) that appears after a FinishAction, or the first (the task) if nothing was finished yet."""

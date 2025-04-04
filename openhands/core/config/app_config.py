@@ -47,7 +47,8 @@ class AppConfig(BaseModel):
         file_uploads_allowed_extensions: Allowed file extensions. `['.*']` allows all.
         cli_multiline_input: Whether to enable multiline input in CLI. When disabled,
             input is read line by line. When enabled, input continues until /exit command.
-        checklist_model_path: Model path or HF name to be used for checklist generation
+        preconditions_model_path: Model path or HF name to be used for preconditions checklist generation
+        postconditions_model_path: Model path or HF name to be used for postconditions checklist generation
     """
 
     llms: dict[str, LLMConfig] = Field(default_factory=dict)
@@ -84,9 +85,13 @@ class AppConfig(BaseModel):
     daytona_api_url: str = Field(default='https://app.daytona.io/api')
     daytona_target: str = Field(default='eu')
     cli_multiline_input: bool = Field(default=False)
-    checklist_model_path: str | None = Field(default=None)
+    preconditions_model_path: str | None = Field(default=None)
+    postconditions_model_path: str | None = Field(default=None)
     conversation_max_age_seconds: int = Field(default=864000)  # 10 days in seconds
     enable_default_condenser: bool = Field(default=True)
+    preconditions_model_path: str | None = Field(default=None)
+    postconditions_model_path: str | None = Field(default=None)
+    to_refine: bool = Field(default=False)
     max_concurrent_conversations: int = Field(
         default=3
     )  # Maximum number of concurrent agent loops allowed per user
@@ -110,8 +115,11 @@ class AppConfig(BaseModel):
     def set_llm_config(self, value: LLMConfig, name='llm') -> None:
         self.llms[name] = value
 
-    def set_checklist_model(self, model_path: str) -> None:
-        self.checklist_model_path = model_path
+    def set_preconditions_model(self, model_path: str) -> None:
+        self.preconditions_model_path = preconditions_model_path
+
+    def set_postconditions_model(self, model_path: str) -> None:
+        self.postconditions_model_path = postconditions_model_path
 
     def get_agent_config(self, name='agent') -> AgentConfig:
         """'agent' is the name for default config (for backward compatibility prior to 0.8)."""
