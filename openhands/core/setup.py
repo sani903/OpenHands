@@ -9,15 +9,13 @@ import openhands.agenthub  # noqa F401 (we import this to get the agents registe
 from openhands.controller import AgentController
 from openhands.controller.agent import Agent
 from openhands.controller.state.state import State
-from openhands.core.config import (``
+from openhands.core.config import (
     AppConfig,
 )
 from openhands.core.logger import openhands_logger as logger
 from openhands.events import EventStream
 from openhands.events.event import Event
 from openhands.integrations.provider import ProviderToken, ProviderType, SecretStore
-from openhands.llm.preconditions_model import LocalPreConditionsModel
-from openhands.llm.postconditions_model import LocalPostConditionsModel
 from openhands.llm.llm import LLM
 from openhands.memory.memory import Memory
 from openhands.microagent.microagent import BaseMicroAgent
@@ -221,9 +219,9 @@ def create_controller(
         headless_mode=headless_mode,
         confirmation_mode=config.security.confirmation_mode,
         replay_events=replay_events,
-        preconditions_model=config.preconditions_model,
-        postconditions_model=config.postconditions_model,
-        to_refine=config.to_refine
+        preconditions_model=config.preconditions_model_path,
+        postconditions_model=config.postconditions_model_path,
+        to_refine=config.to_refine,
     )
     return (controller, initial_state)
 

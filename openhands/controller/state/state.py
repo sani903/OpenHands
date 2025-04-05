@@ -99,6 +99,7 @@ class State:
     end_id: int = -1
     preconditions: Optional[str] = None
     postconditions: Optional[str] = None
+    stuck_detector_reset_time: list[int] = []
 
     delegates: dict[tuple[int, int], tuple[str, str]] = field(default_factory=dict)
     # NOTE: This will never be used by the controller, but it can be used by different

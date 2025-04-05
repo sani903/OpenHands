@@ -30,8 +30,6 @@ from openhands.events.action.action import Action
 from openhands.events.event import Event
 from openhands.events.observation import AgentStateChangedObservation
 from openhands.io import read_input, read_task
-from openhands.llm.preconditions_model import LocalPreConditionsModel
-from openhands.llm.postconditions_model import LocalPostConditionsModel
 from openhands.memory.memory import Memory
 from openhands.runtime.base import Runtime
 from openhands.utils.async_utils import call_async_from_sync
@@ -119,9 +117,6 @@ async def run_controller(
 
     event_stream = runtime.event_stream
 
-    preconditions_model = LocalPreConditionsModel(config.preconditions_model_path)
-    postconditions_model = LocalPostConditionsModel(config.postconditions_model_path)
-
     # when memory is created, it will load the microagents from the selected repository
     if memory is None:
         memory = create_memory(
@@ -145,8 +140,6 @@ async def run_controller(
         runtime,
         config,
         replay_events=replay_events,
-        preconditions_model=preconditions_model,
-        postconditions_model=postconditions_model,
     )
 
     assert isinstance(

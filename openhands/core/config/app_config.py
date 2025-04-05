@@ -89,8 +89,6 @@ class AppConfig(BaseModel):
     postconditions_model_path: str | None = Field(default=None)
     conversation_max_age_seconds: int = Field(default=864000)  # 10 days in seconds
     enable_default_condenser: bool = Field(default=True)
-    preconditions_model_path: str | None = Field(default=None)
-    postconditions_model_path: str | None = Field(default=None)
     to_refine: bool = Field(default=False)
     max_concurrent_conversations: int = Field(
         default=3
@@ -116,10 +114,10 @@ class AppConfig(BaseModel):
         self.llms[name] = value
 
     def set_preconditions_model(self, model_path: str) -> None:
-        self.preconditions_model_path = preconditions_model_path
+        self.preconditions_model_path = model_path
 
     def set_postconditions_model(self, model_path: str) -> None:
-        self.postconditions_model_path = postconditions_model_path
+        self.postconditions_model_path = model_path
 
     def get_agent_config(self, name='agent') -> AgentConfig:
         """'agent' is the name for default config (for backward compatibility prior to 0.8)."""

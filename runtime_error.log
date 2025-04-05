@@ -1,0 +1,552 @@
+ALLHANDS_API_KEY="ah-73a36a7d-a9f4-4f52-aa85-215abc90a96f" RUNTIME=remote SANDBOX_REMOTE_RUNTIME_API_URL="https://runtime.eval.all-hands.dev" EVAL_DOCKER_IMAGE_PREFIX="us-central1-docker.pkg.dev/evaluation-092424/swe-bench-images" \
+./evaluation/benchmarks/swe_bench/scripts/run_infer.sh llm.deepseek HEAD CodeActAgent 50 30 1 princeton-nlp/SWE-bench_Verified test > runtime_error.log
+
+18:58:03 - openhands:INFO: run_infer.py:137 - Default docker image prefix: us-central1-docker.pkg.dev/evaluation-092424/swe-bench-images
+18:58:05 - openhands:INFO: run_infer.py:603 - Filtering 1 tasks from "SKIP_IDS"...
+18:58:05 - openhands:INFO: run_infer.py:628 - Loaded dataset princeton-nlp/SWE-bench_Verified with split test: 500 tasks
+18:58:05 - openhands:INFO: shared.py:190 - Using evaluation output directory: evaluation/evaluation_outputs/outputs/princeton-nlp__SWE-bench_Verified-test/CodeActAgent/deepseek-chat_maxiter_30_N_v0.30.1-no-hint-run_1
+18:58:05 - openhands:INFO: shared.py:210 - Metadata: {"agent_class":"CodeActAgent","llm_config":{"model":"openai/neulab/deepseek-chat","api_key":"**********","base_url":"https://cmu.litellm.ai","api_version":null,"aws_access_key_id":null,"aws_secret_access_key":null,"aws_region_name":null,"openrouter_site_url":"https://docs.all-hands.dev/","openrouter_app_name":"OpenHands","num_retries":4,"retry_multiplier":2.0,"retry_min_wait":5,"retry_max_wait":30,"timeout":null,"max_message_chars":30000,"temperature":0.0,"top_p":1.0,"custom_llm_provider":null,"max_input_tokens":null,"max_output_tokens":null,"input_cost_per_token":null,"output_cost_per_token":null,"ollama_base_url":null,"drop_params":true,"modify_params":false,"disable_vision":null,"caching_prompt":true,"log_completions":true,"log_completions_folder":"/Users/sanid/Desktop/Checklist/OpenHands/logs/completions","custom_tokenizer":null,"native_tool_calling":null,"reasoning_effort":"high","seed":null,"preconditions_model_path":"meta-llama/Llama-3.2-1B","postconditions_model_path":"meta-llama/Llama-3.2-1B"},"agent_config":null,"max_iterations":30,"eval_output_dir":"evaluation/evaluation_outputs/outputs/princeton-nlp__SWE-bench_Verified-test/CodeActAgent/deepseek-chat_maxiter_30_N_v0.30.1-no-hint-run_1","start_time":"2025-04-04 18:58:05","git_commit":"da2da35dd667cbd807d05f70dda0c935d29aafa3","dataset":"princeton-nlp__SWE-bench_Verified-test","data_split":null,"details":{},"condenser_config":{"type":"noop"}}
+18:58:05 - openhands:INFO: shared.py:228 - Writing evaluation output to evaluation/evaluation_outputs/outputs/princeton-nlp__SWE-bench_Verified-test/CodeActAgent/deepseek-chat_maxiter_30_N_v0.30.1-no-hint-run_1/output.jsonl
+18:58:05 - openhands:WARNING: shared.py:235 -
+Output file evaluation/evaluation_outputs/outputs/princeton-nlp__SWE-bench_Verified-test/CodeActAgent/deepseek-chat_maxiter_30_N_v0.30.1-no-hint-run_1/output.jsonl already exists. Loaded 0 finished instances.
+18:58:05 - openhands:INFO: shared.py:262 - Randomly sampling 50 unique instances with random seed 42.
+18:58:05 - openhands:INFO: shared.py:271 - Finished instances: 0, Remaining instances: 50
+18:58:05 - openhands:INFO: shared.py:401 - Evaluation started with Agent CodeActAgent:
+model openai/neulab/deepseek-chat, max iterations 30.
+
+Instances processed:   0%|                                                                            | 0/50 [00:00<?, ?it/s]18:58:05 - openhands:INFO: run_infer.py:150 - Using official SWE-Bench image: swebench/sweb.eval.x86_64.scikit-learn_1776_scikit-learn-13439:latest
+18:58:05 - openhands:INFO: run_infer.py:175 - Using instance container image: swebench/sweb.eval.x86_64.scikit-learn_1776_scikit-learn-13439:latest. Please make sure this image exists. Submit an issue on https://github.com/All-Hands-AI/OpenHands if you run into any issues.
+18:58:05 - openhands:INFO: mapping.py:26 - Resource mapping for princeton-nlp__SWE-bench_Verified-test not found.
+18:58:05 - openhands:INFO: shared.py:501 - Logging LLM completions for instance scikit-learn__scikit-learn-13439 to evaluation/evaluation_outputs/outputs/princeton-nlp__SWE-bench_Verified-test/CodeActAgent/deepseek-chat_maxiter_30_N_v0.30.1-no-hint-run_1/llm_completions/scikit-learn__scikit-learn-13439
+18:58:05 - openhands:INFO: run_infer.py:500 - Starting evaluation for instance scikit-learn__scikit-learn-13439.
+18:58:05 - openhands:INFO: remote_runtime.py:120 - [runtime session_id=518c7cf8-af92-4d89-8d91-3dface2dd80f-3a683442a2d5319d runtime_id=unknown] Building remote runtime with base image: swebench/sweb.eval.x86_64.scikit-learn_1776_scikit-learn-13439:latest
+18:58:05 - openhands:INFO: runtime_build.py:182 - Building image: us-central1-docker.pkg.dev/evaluation-092424/runtime-api-docker-repo/runtime:oh_v0.30.1_ajm7rg09givtwven_7bnk4nsty5eqjuh4
+18:58:06 - openhands:INFO: remote_runtime.py:140 - [runtime session_id=518c7cf8-af92-4d89-8d91-3dface2dd80f-3a683442a2d5319d runtime_id=btxjbjhfbbbnhgbw] Waiting for runtime to be alive...
+18:58:45 - openhands:ERROR: remote_runtime.py:104 - [runtime session_id=518c7cf8-af92-4d89-8d91-3dface2dd80f-3a683442a2d5319d runtime_id=btxjbjhfbbbnhgbw] Runtime failed to start
+18:58:45 - openhands:ERROR: shared.py:562 - Fatal runtime error detected: AgentRuntimeUnavailableError: Runtime crashed and is being restarted, potentially due to memory usage. Please try again.
+18:58:45 - openhands:ERROR: shared.py:378 - ----------
+Error in instance [scikit-learn__scikit-learn-13439]: Runtime crashed and is being restarted, potentially due to memory usage. Please try again.. Stacktrace:
+Traceback (most recent call last):
+  File "/Users/sanid/Desktop/Checklist/OpenHands/evaluation/utils/shared.py", line 325, in _process_instance_wrapper
+    result = process_instance_func(instance, metadata, use_mp, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/evaluation/benchmarks/swe_bench/run_infer.py", line 519, in process_instance
+    call_async_from_sync(runtime.connect)
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 50, in call_async_from_sync
+    result = future.result()
+             ^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/_base.py", line 456, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 44, in run
+    return asyncio.run(arun())
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 37, in arun
+    result = await coro
+             ^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/runtime/impl/remote/remote_runtime.py", line 101, in connect
+    await call_sync_from_async(self._start_or_attach_to_runtime)
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 18, in call_sync_from_async
+    result = await coro
+             ^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 17, in <lambda>
+    coro = loop.run_in_executor(None, lambda: fn(*args, **kwargs))
+                                              ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/runtime/impl/remote/remote_runtime.py", line 141, in _start_or_attach_to_runtime
+    self._wait_until_alive()
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/runtime/impl/remote/remote_runtime.py", line 320, in _wait_until_alive
+    return retry_decorator(self._wait_until_alive_impl)()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 336, in wrapped_f
+    return copy(f, *args, **kw)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 475, in __call__
+    do = self.iter(retry_state=retry_state)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 376, in iter
+    result = action(retry_state)
+             ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 398, in <lambda>
+    self._add_action_func(lambda rs: rs.outcome.result())
+                                     ^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/_base.py", line 449, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 478, in __call__
+    result = fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/runtime/impl/remote/remote_runtime.py", line 366, in _wait_until_alive_impl
+    raise AgentRuntimeUnavailableError(
+openhands.core.exceptions.AgentRuntimeUnavailableError: Runtime crashed and is being restarted, potentially due to memory usage. Please try again.
+
+----------[The above error occurred. Retrying... (attempt 1 of 5)]----------
+Runtime disconnected error detected for instance scikit-learn__scikit-learn-13439, runtime failure count: 1
+----------
+
+18:58:50 - openhands:INFO: run_infer.py:150 - Using official SWE-Bench image: swebench/sweb.eval.x86_64.scikit-learn_1776_scikit-learn-13439:latest
+18:58:50 - openhands:INFO: run_infer.py:175 - Using instance container image: swebench/sweb.eval.x86_64.scikit-learn_1776_scikit-learn-13439:latest. Please make sure this image exists. Submit an issue on https://github.com/All-Hands-AI/OpenHands if you run into any issues.
+18:58:50 - openhands:INFO: mapping.py:26 - Resource mapping for princeton-nlp__SWE-bench_Verified-test not found.
+18:58:50 - openhands:INFO: shared.py:501 - Logging LLM completions for instance scikit-learn__scikit-learn-13439 to evaluation/evaluation_outputs/outputs/princeton-nlp__SWE-bench_Verified-test/CodeActAgent/deepseek-chat_maxiter_30_N_v0.30.1-no-hint-run_1/llm_completions/scikit-learn__scikit-learn-13439
+18:58:50 - openhands:INFO: run_infer.py:500 - Starting evaluation for instance scikit-learn__scikit-learn-13439.
+18:58:50 - openhands:WARNING: run_infer.py:508 - This is the 2th attempt for instance scikit-learn__scikit-learn-13439, setting resource factor to 2
+18:58:50 - openhands:INFO: remote_runtime.py:120 - [runtime session_id=6782736f-868e-488a-b43a-ee363caa076e-61d677377af66367 runtime_id=unknown] Building remote runtime with base image: swebench/sweb.eval.x86_64.scikit-learn_1776_scikit-learn-13439:latest
+18:58:50 - openhands:INFO: runtime_build.py:182 - Building image: us-central1-docker.pkg.dev/evaluation-092424/runtime-api-docker-repo/runtime:oh_v0.30.1_ajm7rg09givtwven_7bnk4nsty5eqjuh4
+18:58:51 - openhands:INFO: remote_runtime.py:140 - [runtime session_id=6782736f-868e-488a-b43a-ee363caa076e-61d677377af66367 runtime_id=cmqqmzhlpvkzeavp] Waiting for runtime to be alive...
+18:59:36 - openhands:ERROR: remote_runtime.py:104 - [runtime session_id=6782736f-868e-488a-b43a-ee363caa076e-61d677377af66367 runtime_id=cmqqmzhlpvkzeavp] Runtime failed to start
+18:59:36 - openhands:ERROR: shared.py:562 - Fatal runtime error detected: AgentRuntimeUnavailableError: Runtime crashed and is being restarted, potentially due to memory usage. Please try again.
+18:59:36 - openhands:ERROR: shared.py:378 - ----------
+Error in instance [scikit-learn__scikit-learn-13439]: Runtime crashed and is being restarted, potentially due to memory usage. Please try again.. Stacktrace:
+Traceback (most recent call last):
+  File "/Users/sanid/Desktop/Checklist/OpenHands/evaluation/utils/shared.py", line 325, in _process_instance_wrapper
+    result = process_instance_func(instance, metadata, use_mp, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/evaluation/benchmarks/swe_bench/run_infer.py", line 519, in process_instance
+    call_async_from_sync(runtime.connect)
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 50, in call_async_from_sync
+    result = future.result()
+             ^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/_base.py", line 456, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 44, in run
+    return asyncio.run(arun())
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 37, in arun
+    result = await coro
+             ^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/runtime/impl/remote/remote_runtime.py", line 101, in connect
+    await call_sync_from_async(self._start_or_attach_to_runtime)
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 18, in call_sync_from_async
+    result = await coro
+             ^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 17, in <lambda>
+    coro = loop.run_in_executor(None, lambda: fn(*args, **kwargs))
+                                              ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/runtime/impl/remote/remote_runtime.py", line 141, in _start_or_attach_to_runtime
+    self._wait_until_alive()
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/runtime/impl/remote/remote_runtime.py", line 320, in _wait_until_alive
+    return retry_decorator(self._wait_until_alive_impl)()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 336, in wrapped_f
+    return copy(f, *args, **kw)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 475, in __call__
+    do = self.iter(retry_state=retry_state)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 376, in iter
+    result = action(retry_state)
+             ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 398, in <lambda>
+    self._add_action_func(lambda rs: rs.outcome.result())
+                                     ^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/_base.py", line 449, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 478, in __call__
+    result = fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/runtime/impl/remote/remote_runtime.py", line 366, in _wait_until_alive_impl
+    raise AgentRuntimeUnavailableError(
+openhands.core.exceptions.AgentRuntimeUnavailableError: Runtime crashed and is being restarted, potentially due to memory usage. Please try again.
+
+----------[The above error occurred. Retrying... (attempt 2 of 5)]----------
+Runtime disconnected error detected for instance scikit-learn__scikit-learn-13439, runtime failure count: 2
+----------
+
+18:59:41 - openhands:INFO: run_infer.py:150 - Using official SWE-Bench image: swebench/sweb.eval.x86_64.scikit-learn_1776_scikit-learn-13439:latest
+18:59:41 - openhands:INFO: run_infer.py:175 - Using instance container image: swebench/sweb.eval.x86_64.scikit-learn_1776_scikit-learn-13439:latest. Please make sure this image exists. Submit an issue on https://github.com/All-Hands-AI/OpenHands if you run into any issues.
+18:59:41 - openhands:INFO: mapping.py:26 - Resource mapping for princeton-nlp__SWE-bench_Verified-test not found.
+18:59:41 - openhands:INFO: shared.py:501 - Logging LLM completions for instance scikit-learn__scikit-learn-13439 to evaluation/evaluation_outputs/outputs/princeton-nlp__SWE-bench_Verified-test/CodeActAgent/deepseek-chat_maxiter_30_N_v0.30.1-no-hint-run_1/llm_completions/scikit-learn__scikit-learn-13439
+18:59:41 - openhands:INFO: run_infer.py:500 - Starting evaluation for instance scikit-learn__scikit-learn-13439.
+18:59:41 - openhands:WARNING: run_infer.py:508 - This is the 3th attempt for instance scikit-learn__scikit-learn-13439, setting resource factor to 4
+18:59:42 - openhands:INFO: remote_runtime.py:120 - [runtime session_id=52479d75-b355-4d89-82cc-c567c0383267-6f54db9fba6fea07 runtime_id=unknown] Building remote runtime with base image: swebench/sweb.eval.x86_64.scikit-learn_1776_scikit-learn-13439:latest
+18:59:42 - openhands:INFO: runtime_build.py:182 - Building image: us-central1-docker.pkg.dev/evaluation-092424/runtime-api-docker-repo/runtime:oh_v0.30.1_ajm7rg09givtwven_7bnk4nsty5eqjuh4
+18:59:43 - openhands:INFO: remote_runtime.py:140 - [runtime session_id=52479d75-b355-4d89-82cc-c567c0383267-6f54db9fba6fea07 runtime_id=kssapwcbbfcxivox] Waiting for runtime to be alive...
+19:00:47 - openhands:ERROR: remote_runtime.py:104 - [runtime session_id=52479d75-b355-4d89-82cc-c567c0383267-6f54db9fba6fea07 runtime_id=kssapwcbbfcxivox] Runtime failed to start
+19:00:47 - openhands:ERROR: shared.py:562 - Fatal runtime error detected: AgentRuntimeUnavailableError: Runtime crashed and is being restarted, potentially due to memory usage. Please try again.
+19:00:47 - openhands:ERROR: shared.py:378 - ----------
+Error in instance [scikit-learn__scikit-learn-13439]: Runtime crashed and is being restarted, potentially due to memory usage. Please try again.. Stacktrace:
+Traceback (most recent call last):
+  File "/Users/sanid/Desktop/Checklist/OpenHands/evaluation/utils/shared.py", line 325, in _process_instance_wrapper
+    result = process_instance_func(instance, metadata, use_mp, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/evaluation/benchmarks/swe_bench/run_infer.py", line 519, in process_instance
+    call_async_from_sync(runtime.connect)
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 50, in call_async_from_sync
+    result = future.result()
+             ^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/_base.py", line 456, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 44, in run
+    return asyncio.run(arun())
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 37, in arun
+    result = await coro
+             ^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/runtime/impl/remote/remote_runtime.py", line 101, in connect
+    await call_sync_from_async(self._start_or_attach_to_runtime)
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 18, in call_sync_from_async
+    result = await coro
+             ^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 17, in <lambda>
+    coro = loop.run_in_executor(None, lambda: fn(*args, **kwargs))
+                                              ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/runtime/impl/remote/remote_runtime.py", line 141, in _start_or_attach_to_runtime
+    self._wait_until_alive()
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/runtime/impl/remote/remote_runtime.py", line 320, in _wait_until_alive
+    return retry_decorator(self._wait_until_alive_impl)()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 336, in wrapped_f
+    return copy(f, *args, **kw)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 475, in __call__
+    do = self.iter(retry_state=retry_state)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 376, in iter
+    result = action(retry_state)
+             ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 398, in <lambda>
+    self._add_action_func(lambda rs: rs.outcome.result())
+                                     ^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/_base.py", line 449, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 478, in __call__
+    result = fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/runtime/impl/remote/remote_runtime.py", line 366, in _wait_until_alive_impl
+    raise AgentRuntimeUnavailableError(
+openhands.core.exceptions.AgentRuntimeUnavailableError: Runtime crashed and is being restarted, potentially due to memory usage. Please try again.
+
+----------[The above error occurred. Retrying... (attempt 3 of 5)]----------
+Runtime disconnected error detected for instance scikit-learn__scikit-learn-13439, runtime failure count: 3
+----------
+
+19:00:52 - openhands:INFO: run_infer.py:150 - Using official SWE-Bench image: swebench/sweb.eval.x86_64.scikit-learn_1776_scikit-learn-13439:latest
+19:00:52 - openhands:INFO: run_infer.py:175 - Using instance container image: swebench/sweb.eval.x86_64.scikit-learn_1776_scikit-learn-13439:latest. Please make sure this image exists. Submit an issue on https://github.com/All-Hands-AI/OpenHands if you run into any issues.
+19:00:52 - openhands:INFO: mapping.py:26 - Resource mapping for princeton-nlp__SWE-bench_Verified-test not found.
+19:00:52 - openhands:INFO: shared.py:501 - Logging LLM completions for instance scikit-learn__scikit-learn-13439 to evaluation/evaluation_outputs/outputs/princeton-nlp__SWE-bench_Verified-test/CodeActAgent/deepseek-chat_maxiter_30_N_v0.30.1-no-hint-run_1/llm_completions/scikit-learn__scikit-learn-13439
+19:00:52 - openhands:INFO: run_infer.py:500 - Starting evaluation for instance scikit-learn__scikit-learn-13439.
+19:00:52 - openhands:WARNING: run_infer.py:508 - This is the 4th attempt for instance scikit-learn__scikit-learn-13439, setting resource factor to 8
+19:00:52 - openhands:INFO: remote_runtime.py:120 - [runtime session_id=b4d9cfcd-84cb-498d-a2f1-b33650cd75de-724384f0f084d8a2 runtime_id=unknown] Building remote runtime with base image: swebench/sweb.eval.x86_64.scikit-learn_1776_scikit-learn-13439:latest
+19:00:52 - openhands:INFO: runtime_build.py:182 - Building image: us-central1-docker.pkg.dev/evaluation-092424/runtime-api-docker-repo/runtime:oh_v0.30.1_ajm7rg09givtwven_7bnk4nsty5eqjuh4
+19:00:53 - openhands:INFO: remote_runtime.py:140 - [runtime session_id=b4d9cfcd-84cb-498d-a2f1-b33650cd75de-724384f0f084d8a2 runtime_id=ietjegvtphinxllx] Waiting for runtime to be alive...
+19:01:29 - openhands:ERROR: remote_runtime.py:104 - [runtime session_id=b4d9cfcd-84cb-498d-a2f1-b33650cd75de-724384f0f084d8a2 runtime_id=ietjegvtphinxllx] Runtime failed to start
+19:01:29 - openhands:ERROR: shared.py:562 - Fatal runtime error detected: AgentRuntimeUnavailableError: Runtime crashed and is being restarted, potentially due to memory usage. Please try again.
+19:01:29 - openhands:ERROR: shared.py:378 - ----------
+Error in instance [scikit-learn__scikit-learn-13439]: Runtime crashed and is being restarted, potentially due to memory usage. Please try again.. Stacktrace:
+Traceback (most recent call last):
+  File "/Users/sanid/Desktop/Checklist/OpenHands/evaluation/utils/shared.py", line 325, in _process_instance_wrapper
+    result = process_instance_func(instance, metadata, use_mp, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/evaluation/benchmarks/swe_bench/run_infer.py", line 519, in process_instance
+    call_async_from_sync(runtime.connect)
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 50, in call_async_from_sync
+    result = future.result()
+             ^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/_base.py", line 456, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 44, in run
+    return asyncio.run(arun())
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 37, in arun
+    result = await coro
+             ^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/runtime/impl/remote/remote_runtime.py", line 101, in connect
+    await call_sync_from_async(self._start_or_attach_to_runtime)
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 18, in call_sync_from_async
+    result = await coro
+             ^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 17, in <lambda>
+    coro = loop.run_in_executor(None, lambda: fn(*args, **kwargs))
+                                              ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/runtime/impl/remote/remote_runtime.py", line 141, in _start_or_attach_to_runtime
+    self._wait_until_alive()
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/runtime/impl/remote/remote_runtime.py", line 320, in _wait_until_alive
+    return retry_decorator(self._wait_until_alive_impl)()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 336, in wrapped_f
+    return copy(f, *args, **kw)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 475, in __call__
+    do = self.iter(retry_state=retry_state)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 376, in iter
+    result = action(retry_state)
+             ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 398, in <lambda>
+    self._add_action_func(lambda rs: rs.outcome.result())
+                                     ^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/_base.py", line 449, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 478, in __call__
+    result = fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/runtime/impl/remote/remote_runtime.py", line 366, in _wait_until_alive_impl
+    raise AgentRuntimeUnavailableError(
+openhands.core.exceptions.AgentRuntimeUnavailableError: Runtime crashed and is being restarted, potentially due to memory usage. Please try again.
+
+----------[The above error occurred. Retrying... (attempt 4 of 5)]----------
+Runtime disconnected error detected for instance scikit-learn__scikit-learn-13439, runtime failure count: 4
+----------
+
+19:01:34 - openhands:INFO: run_infer.py:150 - Using official SWE-Bench image: swebench/sweb.eval.x86_64.scikit-learn_1776_scikit-learn-13439:latest
+19:01:34 - openhands:INFO: run_infer.py:175 - Using instance container image: swebench/sweb.eval.x86_64.scikit-learn_1776_scikit-learn-13439:latest. Please make sure this image exists. Submit an issue on https://github.com/All-Hands-AI/OpenHands if you run into any issues.
+19:01:34 - openhands:INFO: mapping.py:26 - Resource mapping for princeton-nlp__SWE-bench_Verified-test not found.
+19:01:34 - openhands:INFO: shared.py:501 - Logging LLM completions for instance scikit-learn__scikit-learn-13439 to evaluation/evaluation_outputs/outputs/princeton-nlp__SWE-bench_Verified-test/CodeActAgent/deepseek-chat_maxiter_30_N_v0.30.1-no-hint-run_1/llm_completions/scikit-learn__scikit-learn-13439
+19:01:34 - openhands:INFO: run_infer.py:500 - Starting evaluation for instance scikit-learn__scikit-learn-13439.
+19:01:34 - openhands:WARNING: run_infer.py:508 - This is the 5th attempt for instance scikit-learn__scikit-learn-13439, setting resource factor to 8
+19:01:35 - openhands:INFO: remote_runtime.py:120 - [runtime session_id=49e829df-af5b-4c0b-8c3a-aa7e00f604d2-5013062cdd5a929b runtime_id=unknown] Building remote runtime with base image: swebench/sweb.eval.x86_64.scikit-learn_1776_scikit-learn-13439:latest
+19:01:35 - openhands:INFO: runtime_build.py:182 - Building image: us-central1-docker.pkg.dev/evaluation-092424/runtime-api-docker-repo/runtime:oh_v0.30.1_ajm7rg09givtwven_7bnk4nsty5eqjuh4
+19:01:36 - openhands:INFO: remote_runtime.py:140 - [runtime session_id=49e829df-af5b-4c0b-8c3a-aa7e00f604d2-5013062cdd5a929b runtime_id=zljrxllnepdugcla] Waiting for runtime to be alive...
+19:02:12 - openhands:ERROR: remote_runtime.py:104 - [runtime session_id=49e829df-af5b-4c0b-8c3a-aa7e00f604d2-5013062cdd5a929b runtime_id=zljrxllnepdugcla] Runtime failed to start
+19:02:12 - openhands:ERROR: shared.py:562 - Fatal runtime error detected: AgentRuntimeUnavailableError: Runtime crashed and is being restarted, potentially due to memory usage. Please try again.
+19:02:12 - openhands:ERROR: shared.py:378 - ----------
+Error in instance [scikit-learn__scikit-learn-13439]: Runtime crashed and is being restarted, potentially due to memory usage. Please try again.. Stacktrace:
+Traceback (most recent call last):
+  File "/Users/sanid/Desktop/Checklist/OpenHands/evaluation/utils/shared.py", line 325, in _process_instance_wrapper
+    result = process_instance_func(instance, metadata, use_mp, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/evaluation/benchmarks/swe_bench/run_infer.py", line 519, in process_instance
+    call_async_from_sync(runtime.connect)
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 50, in call_async_from_sync
+    result = future.result()
+             ^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/_base.py", line 456, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 44, in run
+    return asyncio.run(arun())
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 37, in arun
+    result = await coro
+             ^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/runtime/impl/remote/remote_runtime.py", line 101, in connect
+    await call_sync_from_async(self._start_or_attach_to_runtime)
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 18, in call_sync_from_async
+    result = await coro
+             ^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 17, in <lambda>
+    coro = loop.run_in_executor(None, lambda: fn(*args, **kwargs))
+                                              ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/runtime/impl/remote/remote_runtime.py", line 141, in _start_or_attach_to_runtime
+    self._wait_until_alive()
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/runtime/impl/remote/remote_runtime.py", line 320, in _wait_until_alive
+    return retry_decorator(self._wait_until_alive_impl)()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 336, in wrapped_f
+    return copy(f, *args, **kw)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 475, in __call__
+    do = self.iter(retry_state=retry_state)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 376, in iter
+    result = action(retry_state)
+             ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 398, in <lambda>
+    self._add_action_func(lambda rs: rs.outcome.result())
+                                     ^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/_base.py", line 449, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 478, in __call__
+    result = fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/runtime/impl/remote/remote_runtime.py", line 366, in _wait_until_alive_impl
+    raise AgentRuntimeUnavailableError(
+openhands.core.exceptions.AgentRuntimeUnavailableError: Runtime crashed and is being restarted, potentially due to memory usage. Please try again.
+
+----------[The above error occurred. Retrying... (attempt 5 of 5)]----------
+Runtime disconnected error detected for instance scikit-learn__scikit-learn-13439, runtime failure count: 5
+----------
+
+19:02:17 - openhands:INFO: run_infer.py:150 - Using official SWE-Bench image: swebench/sweb.eval.x86_64.scikit-learn_1776_scikit-learn-13439:latest
+19:02:17 - openhands:INFO: run_infer.py:175 - Using instance container image: swebench/sweb.eval.x86_64.scikit-learn_1776_scikit-learn-13439:latest. Please make sure this image exists. Submit an issue on https://github.com/All-Hands-AI/OpenHands if you run into any issues.
+19:02:17 - openhands:INFO: mapping.py:26 - Resource mapping for princeton-nlp__SWE-bench_Verified-test not found.
+19:02:17 - openhands:INFO: shared.py:501 - Logging LLM completions for instance scikit-learn__scikit-learn-13439 to evaluation/evaluation_outputs/outputs/princeton-nlp__SWE-bench_Verified-test/CodeActAgent/deepseek-chat_maxiter_30_N_v0.30.1-no-hint-run_1/llm_completions/scikit-learn__scikit-learn-13439
+19:02:17 - openhands:INFO: run_infer.py:500 - Starting evaluation for instance scikit-learn__scikit-learn-13439.
+19:02:17 - openhands:WARNING: run_infer.py:508 - This is the 6th attempt for instance scikit-learn__scikit-learn-13439, setting resource factor to 8
+19:02:17 - openhands:INFO: remote_runtime.py:120 - [runtime session_id=93f4c2c1-3fd3-482f-8fb5-d188eef16961-1a3d0ca9846949df runtime_id=unknown] Building remote runtime with base image: swebench/sweb.eval.x86_64.scikit-learn_1776_scikit-learn-13439:latest
+19:02:17 - openhands:INFO: runtime_build.py:182 - Building image: us-central1-docker.pkg.dev/evaluation-092424/runtime-api-docker-repo/runtime:oh_v0.30.1_ajm7rg09givtwven_7bnk4nsty5eqjuh4
+19:02:18 - openhands:INFO: remote_runtime.py:140 - [runtime session_id=93f4c2c1-3fd3-482f-8fb5-d188eef16961-1a3d0ca9846949df runtime_id=fszgygwlnggcqyrj] Waiting for runtime to be alive...
+19:03:34 - openhands:ERROR: remote_runtime.py:104 - [runtime session_id=93f4c2c1-3fd3-482f-8fb5-d188eef16961-1a3d0ca9846949df runtime_id=fszgygwlnggcqyrj] Runtime failed to start
+19:03:34 - openhands:ERROR: shared.py:356 - Runtime crashed and is being restarted, potentially due to memory usage. Please try again.
+Traceback (most recent call last):
+  File "/Users/sanid/Desktop/Checklist/OpenHands/evaluation/utils/shared.py", line 325, in _process_instance_wrapper
+    result = process_instance_func(instance, metadata, use_mp, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/evaluation/benchmarks/swe_bench/run_infer.py", line 519, in process_instance
+    call_async_from_sync(runtime.connect)
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 50, in call_async_from_sync
+    result = future.result()
+             ^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/_base.py", line 456, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 44, in run
+    return asyncio.run(arun())
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 37, in arun
+    result = await coro
+             ^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/runtime/impl/remote/remote_runtime.py", line 101, in connect
+    await call_sync_from_async(self._start_or_attach_to_runtime)
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 18, in call_sync_from_async
+    result = await coro
+             ^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/utils/async_utils.py", line 17, in <lambda>
+    coro = loop.run_in_executor(None, lambda: fn(*args, **kwargs))
+                                              ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/runtime/impl/remote/remote_runtime.py", line 141, in _start_or_attach_to_runtime
+    self._wait_until_alive()
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/runtime/impl/remote/remote_runtime.py", line 320, in _wait_until_alive
+    return retry_decorator(self._wait_until_alive_impl)()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 336, in wrapped_f
+    return copy(f, *args, **kw)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 475, in __call__
+    do = self.iter(retry_state=retry_state)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 376, in iter
+    result = action(retry_state)
+             ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 398, in <lambda>
+    self._add_action_func(lambda rs: rs.outcome.result())
+                                     ^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/_base.py", line 449, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/OH/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/Users/sanid/Library/Caches/pypoetry/virtualenvs/openhands-ai-cBWJnx2Q-py3.12/lib/python3.12/site-packages/tenacity/__init__.py", line 478, in __call__
+    result = fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/openhands/runtime/impl/remote/remote_runtime.py", line 366, in _wait_until_alive_impl
+    raise AgentRuntimeUnavailableError(
+openhands.core.exceptions.AgentRuntimeUnavailableError: Runtime crashed and is being restarted, potentially due to memory usage. Please try again.
+ERROR:root:  File "/Users/sanid/Desktop/Checklist/OpenHands/evaluation/benchmarks/swe_bench/run_infer.py", line 695, in <module>
+    run_evaluation(
+  File "/Users/sanid/Desktop/Checklist/OpenHands/evaluation/utils/shared.py", line 432, in run_evaluation
+    result = _process_instance_wrapper(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sanid/Desktop/Checklist/OpenHands/evaluation/utils/shared.py", line 357, in _process_instance_wrapper
+    raise RuntimeError(
+
+ERROR:root:<class 'RuntimeError'>: Maximum error retries reached for instance scikit-learn__scikit-learn-13439
+Instances processed:   0%|                                                                            | 0/50 [05:30<?, ?it/s]
