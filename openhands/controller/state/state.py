@@ -3,7 +3,7 @@ import os
 import pickle
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 import openhands
 from openhands.controller.state.task import RootTask
@@ -99,7 +99,7 @@ class State:
     end_id: int = -1
     preconditions: Optional[str] = None
     postconditions: Optional[str] = None
-    stuck_detector_reset_time: list[int] = []
+    stuck_detector_reset_time: List[int] = field(default_factory=list)
 
     delegates: dict[tuple[int, int], tuple[str, str]] = field(default_factory=dict)
     # NOTE: This will never be used by the controller, but it can be used by different
