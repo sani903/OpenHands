@@ -43,7 +43,7 @@ class LocalPreConditionsModel:
                 'Format each checklist item within <checklist_item> and </checklist_item> tags.'
             )
             client = OpenAI(
-                api_key="sk-baRON8zoJp23Pg9j_6ld3Q",
+                api_key="",
                 base_url='https://cmu.litellm.ai',
             )
             try:
