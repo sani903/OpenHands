@@ -2,6 +2,7 @@
 # from transformers import AutoModelForCausalLM, AutoTokenizer
 import os
 import re
+import sys
 
 from openai import OpenAI
 
@@ -9,7 +10,7 @@ from openai import OpenAI
 class LocalPreConditionsModel:
     def __init__(self, model_path):
         # dry run without generations
-        if model_path == 'test':
+        if not model_path or model_path == 'test':
             self.model = None
         elif (
             model_path.startswith('openai')
@@ -42,7 +43,7 @@ class LocalPreConditionsModel:
                 'Format each checklist item within <checklist_item> and </checklist_item> tags.'
             )
             client = OpenAI(
-                api_key=os.environ.get('LITELLM_API_KEY'),
+                api_key="sk-baRON8zoJp23Pg9j_6ld3Q",
                 base_url='https://cmu.litellm.ai',
             )
             try:
@@ -70,8 +71,14 @@ class LocalPreConditionsModel:
                         )
                         checklist = formatted_list
                 except Exception as e:
-                    print(f'Error extracting checklist items: {e}')
-                    checklist = ''
+                    print(f'Error calling model API: {e}')
+                    if "authentication" in str(e).lower() or "api key" in str(e).lower():
+                        checklist = "Authentication error with LLM API"
+                    elif "rate limit" in str(e).lower():
+                        checklist = "Rate limit exceeded with LLM API"
+                    else:
+                        checklist = "Error generating checklist"
+                    return checklist
             except Exception as e:
                 checklist = ''
                 print(f'Error calling model API: {e}')

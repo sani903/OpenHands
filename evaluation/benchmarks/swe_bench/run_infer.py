@@ -45,8 +45,8 @@ from openhands.runtime.base import Runtime
 from openhands.utils.async_utils import call_async_from_sync
 from openhands.utils.shutdown_listener import sleep_if_should_continue
 
-USE_HINT_TEXT = os.environ.get('USE_HINT_TEXT', 'false').lower() == 'true'
-RUN_WITH_BROWSING = os.environ.get('RUN_WITH_BROWSING', 'false').lower() == 'true'
+USE_HINT_TEXT = False
+RUN_WITH_BROWSING = False
 
 
 AGENT_CLS_TO_FAKE_USER_RESPONSE_FN = {

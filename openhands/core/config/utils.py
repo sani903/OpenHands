@@ -552,9 +552,9 @@ def get_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         '--to-refine',
-        type=str,
-        help='Specify the items to refine',
-        default=None,
+        action='store_true',  # FIXED: Use store_true for boolean flags
+        help='Enable refinement mode for postconditions',
+        default=False,
     )
     return parser
 

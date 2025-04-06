@@ -69,6 +69,7 @@ from openhands.llm.llm import LLM
 from openhands.llm.metrics import Metrics, TokenUsage
 from openhands.llm.postconditions_model import LocalPostConditionsModel
 from openhands.llm.preconditions_model import LocalPreConditionsModel
+import sys
 
 # note: RESUME is only available on web GUI
 TRAFFIC_CONTROL_REMINDER = (
@@ -179,6 +180,7 @@ class AgentController:
         self.to_refine = to_refine
         self.postconditions_passed = False
         self.initial_task: str | None = None
+        logger.info("AgentController initialized")
 
     async def close(self, set_stop_state=True) -> None:
         """Closes the agent controller, canceling any ongoing tasks and unsubscribing from the event stream.
@@ -421,10 +423,18 @@ class AgentController:
             return
 
         elif isinstance(action, AgentFinishAction):
+            logger.info("Handling AgentFinishAction")
             if self.postconditions_model and not self.postconditions_passed:
-                postconditions = await self._generate_postconditions(self.initial_task)
-                self.state.postconditions = postconditions
-                self.postconditions_passed = True
+                try:
+                    postconditions = await self._generate_postconditions(self.initial_task)
+                    logger.info("Postconditions generated successfully")
+                    self.state.postconditions = postconditions
+                    self.postconditions_passed = True
+                except Exception as e:
+                    self.log(
+                        'error',
+                        f'Error generating postconditions: {e}. Continuing without postconditions.',
+                    )
                 if self.to_refine:
                     refinement_prompt = 'Check how many of the items have been completed from this checklist and refine your solution based on the incomplete items.'
                     self.state.max_iterations = (
@@ -498,8 +508,10 @@ class AgentController:
             action (MessageAction): The message action to handle.
         """
         if action.source == EventSource.USER:
+            logger.info(f'Handling user message: {action.content}')
             # Only augment the very first user message
             if not self._first_user_message_processed and self.preconditions_model:
+                logger.info('Generating checklist for the first user message')
                 self.initial_task = action.content
                 # Generate checklist using the LLM client
                 checklist = await self.preconditions_model.generate_preconditions(
@@ -511,6 +523,7 @@ class AgentController:
                 action.content = augmented_action.content
                 self._first_user_message_processed = True
                 self.state.preconditions = checklist
+                logger.info(f"Augmented user message with checklist{action.content}")
 
             # Use info level if LOG_ALL_EVENTS is set
             log_level = (
@@ -790,10 +803,16 @@ class AgentController:
         stop_step = False
         if self.state.iteration >= self.state.max_iterations:
             if self.postconditions_model and not self.postconditions_passed:
-                # Generate postconditions with the formatted trajectory
-                postconditions = await self._generate_postconditions(self.initial_task)
-                self.state.postconditions = postconditions
-                self.postconditions_passed = True
+                try:
+                    postconditions = await self._generate_postconditions(self.initial_task)
+                    logger.info("Postconditions generated successfully")
+                    self.state.postconditions = postconditions
+                    self.postconditions_passed = True
+                except Exception as e:
+                    self.log(
+                        'error',
+                        f'Error generating postconditions: {e}. Continuing without postconditions.',
+                    )
                 if self.to_refine:
                     refinement_prompt = "You've reached the maximum number of steps. Check how many of the items have been completed from this checklist and refine your solution based on the incomplete items."
                     # Extend iterations to allow agent to continue
@@ -838,9 +857,16 @@ class AgentController:
             # Only if we have a postconditions model and haven't passed the check yet
             if self.postconditions_model and not self.postconditions_passed:
                 # Generate postconditions with the formatted trajectory
-                postconditions = await self._generate_postconditions(self.initial_task)
-                self.state.postconditions = postconditions
-                self.postconditions_passed = True
+                try:
+                    postconditions = await self._generate_postconditions(self.initial_task)
+                    logger.info("Postconditions generated successfully for stuck")
+                    self.state.postconditions = postconditions
+                    self.postconditions_passed = True
+                except Exception as e:
+                    self.log(
+                        'error',
+                        f'Error generating postconditions: {e}. Continuing without postconditions.',
+                    )
                 if self.to_refine:
                     refinement_prompt = 'Check how many of the items have been completed from this checklist and refine your solution based on the incomplete items.'
                     # Extend iterations to allow agent to continue

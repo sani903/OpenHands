@@ -70,6 +70,44 @@ def display_file_edit(event: FileEditAction | FileEditObservation):
     print(colored(str(event), 'green'))
 
 
+def display_checklist(content: str, checklist_type: str):
+    """Display a checklist (precondition or postcondition) with special formatting."""
+    if "Generated Checklist" in content:
+        # Split the content to isolate the checklist
+        parts = content.split("--- Generated Checklist ---")
+        if len(parts) >= 2:
+            checklist_part = parts[1].split("-----------------------------")[0].strip()
+            print(colored(f"\n📋 {checklist_type} CHECKLIST:", 'cyan', attrs=['bold']))
+            
+            # Process and display each item in the checklist
+            for line in checklist_part.split('\n'):
+                if line.strip():
+                    print(colored('  ' + line.strip(), 'cyan'))
+            print()
+    
+    # For postcondition verification messages
+    if "Check how many of the items have been completed" in content:
+        print(colored("\n📋 VERIFICATION CHECKLIST:", 'magenta', attrs=['bold']))
+        # Extract and display the checklist part
+        if "\nCHECKLIST:\n" in content:
+            checklist_part = content.split("\nCHECKLIST:\n", 1)[1]
+            for line in checklist_part.split('\n'):
+                if line.strip():
+                    print(colored('  ' + line.strip(), 'magenta'))
+            print()
+    
+    # For refinement messages
+    if "refine your solution based on the incomplete items" in content:
+        print(colored("\n🔄 REFINEMENT CHECKLIST:", 'green', attrs=['bold']))
+        # Extract and display the checklist part
+        if "\nCHECKLIST:\n" in content:
+            checklist_part = content.split("\nCHECKLIST:\n", 1)[1]
+            for line in checklist_part.split('\n'):
+                if line.strip():
+                    print(colored('  ' + line.strip(), 'green'))
+            print()
+
+
 def display_event(event: Event, config: AppConfig):
     if isinstance(event, Action):
         if hasattr(event, 'thought'):
@@ -77,6 +115,19 @@ def display_event(event: Event, config: AppConfig):
     if isinstance(event, MessageAction):
         if event.source == EventSource.AGENT:
             display_message(event.content)
+        elif event.source == EventSource.USER:
+            # Check for special checklist-related messages from the system
+            if "Generated Checklist" in event.content:
+                original_content = event.content.split("--- Generated Checklist ---")[0].strip()
+                print(colored('👤 ' + original_content + '\n', 'white'))
+                display_checklist(event.content, "PRECONDITION")
+            elif "Check how many of the items have been completed" in event.content:
+                display_checklist(event.content, "POSTCONDITION")
+            elif "refine your solution based on the incomplete items" in event.content:
+                display_checklist(event.content, "REFINEMENT")
+            else:
+                # Regular user message
+                print(colored('👤 ' + event.content + '\n', 'white'))
     if isinstance(event, CmdRunAction):
         display_command(event.command)
     if isinstance(event, CmdOutputObservation):
@@ -98,6 +149,13 @@ async def main(loop: asyncio.AbstractEventLoop):
 
     # Load config from toml and override with command line arguments
     config: AppConfig = setup_config_from_args(args)
+
+    # Display preconditions/postconditions settings
+    if config.preconditions_model_path:
+        print(colored(f"🔍 Preconditions enabled: {config.preconditions_model_path}", "cyan"))
+    if config.postconditions_model_path:
+        mode = "with refinement" if config.to_refine else "without refinement"
+        print(colored(f"🔍 Postconditions enabled: {config.postconditions_model_path} ({mode})", "cyan"))
 
     # Read task from file, CLI args, or stdin
     task_str = read_task(args, config.cli_multiline_input)

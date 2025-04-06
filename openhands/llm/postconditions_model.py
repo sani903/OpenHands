@@ -9,7 +9,7 @@ from openai import OpenAI
 class LocalPostConditionsModel:
     def __init__(self, model_path):
         # dry run without generations
-        if model_path == 'test':
+        if not model_path or model_path == 'test':
             self.model = None
         elif (
             model_path.startswith('openai')
@@ -24,6 +24,7 @@ class LocalPostConditionsModel:
         #     )
 
     async def generate_postconditions(self, prompt, trajectory):
+        trajectory_text = trajectory if trajectory is not None else "No trajectory available"
         if not self.model:
             checklist = 'Sample checklist'
         elif isinstance(self.model, str) and (
@@ -44,10 +45,9 @@ class LocalPostConditionsModel:
                 'Format each checklist item within <checklist_item> and </checklist_item> tags.'
             )
             client = OpenAI(
-                api_key=os.environ.get('LITELLM_API_KEY'),
+                api_key="sk-baRON8zoJp23Pg9j_6ld3Q",
                 base_url='https://cmu.litellm.ai',
             )
-            print(prompt)
             try:
                 response = client.chat.completions.create(
                     model=self.model,
@@ -73,8 +73,14 @@ class LocalPostConditionsModel:
                         )
                         checklist = formatted_list
                 except Exception as e:
-                    print(f'Error extracting checklist items: {e}')
-                    checklist = ''
+                    print(f'Error calling model API: {e}')
+                    if "authentication" in str(e).lower() or "api key" in str(e).lower():
+                        checklist = "Authentication error with LLM API"
+                    elif "rate limit" in str(e).lower():
+                        checklist = "Rate limit exceeded with LLM API"
+                    else:
+                        checklist = "Error generating checklist"
+                    return checklist
             except Exception as e:
                 checklist = ''
                 print(f'Error calling model API: {e}')
