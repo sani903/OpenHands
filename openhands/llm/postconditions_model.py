@@ -37,7 +37,7 @@ class LocalPostConditionsModel:
 
         if isinstance(self.model, str):  # API model
             client = OpenAI(
-                api_key='sk-baRON8zoJp23Pg9j_6ld3Q', base_url='https://cmu.litellm.ai'
+                api_key='', base_url='https://cmu.litellm.ai'
             )
 
             checklist_prompt = (
