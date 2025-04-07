@@ -13,6 +13,7 @@ from openhands.core.config.extended_config import ExtendedConfig
 from openhands.core.config.llm_config import LLMConfig
 from openhands.core.config.sandbox_config import SandboxConfig
 from openhands.core.config.security_config import SecurityConfig
+from openhands.core.logger import openhands_logger as lg
 
 
 class AppConfig(BaseModel):
@@ -47,6 +48,8 @@ class AppConfig(BaseModel):
         file_uploads_allowed_extensions: Allowed file extensions. `['.*']` allows all.
         cli_multiline_input: Whether to enable multiline input in CLI. When disabled,
             input is read line by line. When enabled, input continues until /exit command.
+        preconditions_model_path: Model path or HF name to be used for preconditions checklist generation
+        postconditions_model_path: Model path or HF name to be used for postconditions checklist generation
     """
 
     llms: dict[str, LLMConfig] = Field(default_factory=dict)
@@ -85,6 +88,9 @@ class AppConfig(BaseModel):
     cli_multiline_input: bool = Field(default=False)
     conversation_max_age_seconds: int = Field(default=864000)  # 10 days in seconds
     enable_default_condenser: bool = Field(default=True)
+    preconditions_model_path: str | None = Field(default=None)
+    postconditions_model_path: str | None = Field(default=None)
+    to_refine: bool = Field(default=False)
     max_concurrent_conversations: int = Field(
         default=3
     )  # Maximum number of concurrent agent loops allowed per user
@@ -92,6 +98,7 @@ class AppConfig(BaseModel):
     defaults_dict: ClassVar[dict] = {}
 
     model_config = {'extra': 'forbid'}
+    lg.info('Initializing AppConfig')
 
     def get_llm_config(self, name='llm') -> LLMConfig:
         """'llm' is the name for default config (for backward compatibility prior to 0.8)."""

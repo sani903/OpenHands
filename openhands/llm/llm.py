@@ -108,6 +108,7 @@ class LLM(RetryMixin, DebugMixin):
             config: The LLM configuration.
             metrics: The metrics to use.
         """
+        logger.info('Initializing LLM')
         self._tried_model_info = False
         self.metrics: Metrics = (
             metrics if metrics is not None else Metrics(model_name=config.model)

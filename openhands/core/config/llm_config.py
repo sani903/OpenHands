@@ -86,6 +86,7 @@ class LLMConfig(BaseModel):
     seed: int | None = Field(default=None)
 
     model_config = {'extra': 'forbid'}
+    logger.info('Initializing LLMConfig')
 
     @classmethod
     def from_toml_section(cls, data: dict) -> dict[str, LLMConfig]:

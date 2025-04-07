@@ -198,6 +198,9 @@ def get_config(
         # do not mount workspace
         workspace_base=None,
         workspace_mount_path=None,
+        preconditions_model_path=None,
+        postconditions_model_path='neulab/deepseek-chat',
+        to_refine=False,
     )
     config.set_llm_config(
         update_llm_config_for_completions_logging(

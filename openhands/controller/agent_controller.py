@@ -67,6 +67,8 @@ from openhands.events.observation import (
 from openhands.events.serialization.event import event_to_trajectory, truncate_content
 from openhands.llm.llm import LLM
 from openhands.llm.metrics import Metrics, TokenUsage
+from openhands.llm.postconditions_model import LocalPostConditionsModel
+from openhands.llm.preconditions_model import LocalPreConditionsModel
 
 # note: RESUME is only available on web GUI
 TRAFFIC_CONTROL_REMINDER = (
@@ -110,6 +112,9 @@ class AgentController:
         headless_mode: bool = True,
         status_callback: Callable | None = None,
         replay_events: list[Event] | None = None,
+        preconditions_model: str | None = None,
+        postconditions_model: str | None = None,
+        to_refine: bool = False,
     ):
         """Initializes a new instance of the AgentController class.
 
@@ -130,6 +135,7 @@ class AgentController:
             status_callback: Optional callback function to handle status updates.
             replay_events: A list of logs to replay.
         """
+        logger.info('init agent controller')
         self.id = sid or event_stream.sid
         self.agent = agent
         self.headless_mode = headless_mode
@@ -137,7 +143,7 @@ class AgentController:
 
         # the event stream must be set before maybe subscribing to it
         self.event_stream = event_stream
-
+        self._first_user_message_processed = False
         # subscribe to the event stream if this is not a delegate
         if not self.is_delegate:
             self.event_stream.subscribe(
@@ -162,6 +168,30 @@ class AgentController:
 
         # replay-related
         self._replay_manager = ReplayManager(replay_events)
+
+        # Checklist generation
+        self.to_refine: bool = to_refine
+        self.preconditions_model: LocalPreConditionsModel | None = None
+        self.postconditions_model: LocalPostConditionsModel | None = None
+        try:
+            if preconditions_model:
+                self.preconditions_model = LocalPreConditionsModel(preconditions_model)
+            if postconditions_model:
+                self.postconditions_model = LocalPostConditionsModel(
+                    postconditions_model
+                )
+                self.to_refine = to_refine
+        except Exception as e:
+            logger.error(
+                f'Failed to initialize preconditions/postconditions models: {e}'
+            )
+            self.preconditions_model = None
+            self.postconditions_model = None
+        # If postconditions_model is not None, and self.to_refine is True, then we pass the checklist and double the max_iterations to allow the model a chance to refine the task.
+        # If self.to_refine is False, then we pass the checklist and expect a message back from the agent on how many items it has completed.
+        self.postconditions_passed = False
+        self.initial_task: str | None = None
+        logger.info('AgentController initialized')
 
     async def close(self, set_stop_state=True) -> None:
         """Closes the agent controller, canceling any ongoing tasks and unsubscribing from the event stream.
@@ -404,6 +434,43 @@ class AgentController:
             return
 
         elif isinstance(action, AgentFinishAction):
+            logger.info('Handling AgentFinishAction')
+            if self.postconditions_model and not self.postconditions_passed:
+                try:
+                    postconditions = await self._generate_postconditions(
+                        self.initial_task
+                    )
+                    logger.info('Postconditions generated successfully')
+                    self.state.postconditions = postconditions
+                    self.postconditions_passed = True
+                except Exception as e:
+                    self.log(
+                        'error',
+                        f'Error generating postconditions: {e}. Continuing without postconditions.',
+                    )
+                if self.to_refine:
+                    refinement_prompt = 'Check how many of the items have been completed from this checklist and refine your solution based on the incomplete items.'
+                    self.state.max_iterations = (
+                        self.state.iteration + self._initial_max_iterations
+                    )
+                    self.event_stream.add_event(
+                        MessageAction(
+                            content=f'{refinement_prompt}\nCHECKLIST:\n{postconditions}'
+                        ),
+                        EventSource.USER,
+                    )
+                else:
+                    completed_items_prompt = 'Check how many of the items have been completed from this checklist and return the number of completed items within <completed></completed> tags.'
+                    # Two turns added for buffer
+                    self.state.max_iterations = self.state.iteration + 2
+                    self.event_stream.add_event(
+                        MessageAction(
+                            content=f'{completed_items_prompt}\nCHECKLIST:\n{postconditions}'
+                        ),
+                        EventSource.USER,
+                    )
+                await self.set_agent_state_to(AgentState.RUNNING)
+                return
             self.state.outputs = action.outputs
             self.state.metrics.merge(self.state.local_metrics)
             await self.set_agent_state_to(AgentState.FINISHED)
@@ -453,6 +520,27 @@ class AgentController:
             action (MessageAction): The message action to handle.
         """
         if action.source == EventSource.USER:
+            logger.info(f'Handling user message: {action.content}')
+            # Only augment the very first user message
+            if not self._first_user_message_processed:
+                self.initial_task = action.content
+                self._first_user_message_processed = True
+                if self.preconditions_model:
+                    logger.info('Generating checklist for the first user message')
+                    # Generate checklist using the LLM client
+                    checklist = await self.preconditions_model.generate_preconditions(
+                        action.content
+                    )
+                    # Use the helper to build an augmented message
+                    augmented_action = self._augment_task_with_checklist(
+                        action, checklist
+                    )
+                    # Replace the original content with the augmented content
+                    action.content = augmented_action.content
+                    self.state.preconditions = checklist
+                    logger.info(
+                        f'Augmented user message with checklist{action.content}'
+                    )
             # Use info level if LOG_ALL_EVENTS is set
             log_level = (
                 'info' if os.getenv('LOG_ALL_EVENTS') in ('true', '1') else 'debug'
@@ -730,6 +818,46 @@ class AgentController:
 
         stop_step = False
         if self.state.iteration >= self.state.max_iterations:
+            if self.postconditions_model and not self.postconditions_passed:
+                try:
+                    postconditions = await self._generate_postconditions(
+                        self.initial_task
+                    )
+                    logger.info('Postconditions generated successfully')
+                    self.state.postconditions = postconditions
+                    self.postconditions_passed = True
+                except Exception as e:
+                    self.log(
+                        'error',
+                        f'Error generating postconditions: {e}. Continuing without postconditions.',
+                    )
+                if self.to_refine:
+                    refinement_prompt = "You've reached the maximum number of steps. Check how many of the items have been completed from this checklist and refine your solution based on the incomplete items."
+                    # Extend iterations to allow agent to continue
+                    self.state.max_iterations = (
+                        self.state.iteration + self._initial_max_iterations
+                    )
+                    # Add the event to the event stream
+                    self.event_stream.add_event(
+                        MessageAction(
+                            content=f'{refinement_prompt}\nCHECKLIST:\n{postconditions}'
+                        ),
+                        EventSource.USER,
+                    )
+                    # Return early to let the agent continue
+                    return
+                else:
+                    completed_items_prompt = "You've reached the maximum number of steps. Check how many of the items have been completed from this checklist and return the number of completed items within <completed></completed> tags."
+                    # Add buffer iterations
+                    self.state.max_iterations = self.state.iteration + 2
+                    self.event_stream.add_event(
+                        MessageAction(
+                            content=f'{completed_items_prompt}\nCHECKLIST:\n{postconditions}'
+                        ),
+                        EventSource.USER,
+                    )
+                    # Return early to let the agent continue
+                    return
             stop_step = await self._handle_traffic_control(
                 'iteration', self.state.iteration, self.state.max_iterations
             )
@@ -744,6 +872,58 @@ class AgentController:
             return
 
         if self._is_stuck():
+            # Only if we have a postconditions model and haven't passed the check yet
+            if self.postconditions_model and not self.postconditions_passed:
+                # Generate postconditions with the formatted trajectory
+                try:
+                    postconditions = await self._generate_postconditions(
+                        self.initial_task
+                    )
+                    logger.info('Postconditions generated successfully for stuck')
+                    self.state.postconditions = postconditions
+                    self.postconditions_passed = True
+                except Exception as e:
+                    self.log(
+                        'error',
+                        f'Error generating postconditions: {e}. Continuing without postconditions.',
+                    )
+                if self.to_refine:
+                    refinement_prompt = 'Check how many of the items have been completed from this checklist and refine your solution based on the incomplete items.'
+                    # Extend iterations to allow agent to continue
+                    self.state.max_iterations = (
+                        self.state.iteration + self._initial_max_iterations
+                    )
+                    # Add the event to the event stream
+                    self.event_stream.add_event(
+                        MessageAction(
+                            content=f'{refinement_prompt}\nCHECKLIST:\n{postconditions}'
+                        ),
+                        EventSource.USER,
+                    )
+                    # Reset the stuck detector
+                    self._stuck_detector.reset()
+                    # Set the agent back to RUNNING state
+                    await self.set_agent_state_to(AgentState.RUNNING)
+                    # Return early to prevent handling the stuck error
+                    return
+                else:
+                    completed_items_prompt = 'Check how many of the items have been completed from this checklist and return the number of completed items within <completed></completed> tags.'
+                    # Add some buffer iterations
+                    self.state.max_iterations = self.state.iteration + 2
+                    self.event_stream.add_event(
+                        MessageAction(
+                            content=f'{completed_items_prompt}\nCHECKLIST:\n{postconditions}'
+                        ),
+                        EventSource.USER,
+                    )
+                    # Reset the stuck detector
+                    self._stuck_detector.reset()
+                    # Set the agent back to RUNNING state
+                    await self.set_agent_state_to(AgentState.RUNNING)
+                    # Return early to prevent handling the stuck error
+                    return
+
+            # If we get here, either postconditions check isn't needed or already done
             await self._react_to_exception(
                 AgentStuckInLoopError('Agent got stuck in a loop')
             )
@@ -1190,3 +1370,111 @@ class AgentController:
             None,
         )
         return self._cached_first_user_message
+
+    def _augment_task_with_checklist(
+        self, user_task: MessageAction, checklist: str
+    ) -> MessageAction:
+        """
+        Given a user task and a generated checklist, builds an augmented task.
+        The augmentation appends the checklist and additional instructions to the original task content.
+        """
+        augmented_content = (
+            f'{user_task.content}\n\n'
+            'CHECKLIST:\n'
+            f'{checklist}\n'
+            'Please ensure you have the required information for all of the checklist items above. Else, ask me any doubts or clarifications you need.'
+        )
+        augmented_task = MessageAction(content=augmented_content)
+        return augmented_task
+
+    async def _update_state_with_augmented_task(
+        self, augmented_task: MessageAction
+    ) -> None:
+        """
+        Updates the controller’s state or event stream with the augmented task.
+        Here, the augmented task is added to the event stream so that it's treated as the incoming user message.
+        """
+        self.event_stream.add_event(augmented_task, EventSource.USER)
+
+    async def _generate_postconditions(self, task: str | None) -> str:
+        """
+        Given a user task and the trajectory, generate a checklist.
+        """
+        trajectory_str = self.get_formatted_trajectory_string()
+        if self.postconditions_model:
+            checklist = await self.postconditions_model.generate_postconditions(
+                task, trajectory_str
+            )
+            return checklist
+        return ''
+
+    def get_current_trajectory(self, include_screenshots: bool = False) -> list[dict]:
+        """
+        Returns the current trajectory of events without requiring the controller to be closed.
+        Args:
+            include_screenshots (bool): Whether to include screenshots in the trajectory.
+        Returns:
+            list[dict]: A list of events converted to trajectory format.
+        """
+        # Get all events from the event stream
+        start_id = self.state.start_id if self.state.start_id >= 0 else 0
+        end_id = self.event_stream.get_latest_event_id()
+
+        # Get events, filtering out backend events and hidden events
+        events = list(
+            self.event_stream.get_events(
+                start_id=start_id,
+                end_id=end_id,
+                reverse=False,
+                filter_out_type=self.filter_out,
+                filter_hidden=True,
+            )
+        )
+        # Convert each event to trajectory format
+        return [event_to_trajectory(event, include_screenshots) for event in events]
+
+    def get_formatted_trajectory_string(self, include_screenshots: bool = False) -> str:
+        """
+        Get the current trajectory as a formatted string for prompting another model.
+        Matches the format from the provided code sample.
+        Args:
+            include_screenshots (bool): Whether to include screenshots in the trajectory.
+        Returns:
+            str: A formatted string representation of the trajectory.
+        """
+        # Get trajectory data
+        trajectory = self.get_current_trajectory(include_screenshots)
+        if not trajectory:
+            return 'Empty trajectory'
+        formatted_output = []
+        for i, event in enumerate(trajectory):
+            # Get event type - determine if it's an action or observation
+            event_type = None
+            if 'action' in event:
+                event_type = 'action'
+            elif 'observation' in event:
+                event_type = 'observation'
+            else:
+                event_type = 'unknown'
+            # Get source if available
+            source = event.get('source', '').lower()
+            # Get content
+            content = event.get('content', '')
+            if not content and 'args' in event and 'content' in event['args']:
+                content = event['args']['content']
+            # Determine role based on event type and source
+            if event_type == 'action' and source == 'user':
+                role = 'USER'
+            elif event_type == 'action' and source == 'agent':
+                role = 'ASSISTANT'
+            elif event_type == 'observation':
+                role = 'OBSERVATION'
+            else:
+                role = event_type.upper()
+            # Truncate long content if it's a string
+            if isinstance(content, str) and len(content) > 500:
+                content = content[:250] + '...' + content[-250:]
+            # Format according to the example code's output format
+            formatted_output.append(f'{role} (Step {i+1}):\n{content}\n')
+        # Join with newlines as in the original format
+        return '\n'.join(formatted_output)

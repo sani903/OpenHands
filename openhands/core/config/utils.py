@@ -25,6 +25,7 @@ from openhands.core.config.extended_config import ExtendedConfig
 from openhands.core.config.llm_config import LLMConfig
 from openhands.core.config.sandbox_config import SandboxConfig
 from openhands.core.config.security_config import SecurityConfig
+from openhands.core.logger import openhands_logger as lg
 from openhands.storage import get_file_store
 from openhands.storage.files import FileStore
 
@@ -121,6 +122,7 @@ def load_from_toml(cfg: AppConfig, toml_file: str = 'config.toml') -> None:
     - config.template.toml for the full list of config options.
     """
     # try to read the config.toml file into the config object
+    lg.info('Loading config from toml file')
     try:
         with open(toml_file, 'r', encoding='utf-8') as toml_contents:
             toml_config = toml.load(toml_contents)
@@ -333,6 +335,7 @@ def get_agent_config_arg(
     Returns:
         AgentConfig: The AgentConfig object with the settings from the config file.
     """
+    lg.info('Loading agent config from toml file')
     # keep only the name, just in case
     agent_config_arg = agent_config_arg.strip('[]')
 
@@ -390,6 +393,7 @@ def get_llm_config_arg(
     Returns:
         LLMConfig: The LLMConfig object with the settings from the config file.
     """
+    lg.info('Loading llm config from toml file')
     # keep only the name, just in case
     llm_config_arg = llm_config_arg.strip('[]')
 
@@ -537,6 +541,25 @@ def get_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
     )
+    # Add arguments for preconditions and postconditions model paths
+    parser.add_argument(
+        '--preconditions-model-path',
+        type=str,
+        help='Path or HF model name for preconditions checklist generation',
+        default=None,
+    )
+    parser.add_argument(
+        '--postconditions-model-path',
+        type=str,
+        help='Path or HF model name for postconditions checklist generation',
+        default=None,
+    )
+    parser.add_argument(
+        '--to-refine',
+        action='store_true',  # FIXED: Use store_true for boolean flags
+        help='Enable refinement mode for postconditions',
+        default=False,
+    )
     return parser
 
 
@@ -576,6 +599,7 @@ def setup_config_from_args(args: argparse.Namespace) -> AppConfig:
 
     Common setup used by both CLI and main.py entry points.
     """
+    lg.info('Loading config from command line arguments')
     # Load base config from toml and env vars
     config = load_app_config(config_file=args.config_file)
 
@@ -604,4 +628,11 @@ def setup_config_from_args(args: argparse.Namespace) -> AppConfig:
     if args.selected_repo is not None:
         config.sandbox.selected_repo = args.selected_repo
 
+    # Add command line arguments for preconditions and postconditions model paths
+    if args.preconditions_model_path is not None:
+        config.preconditions_model_path = args.preconditions_model_path
+    if args.postconditions_model_path is not None:
+        config.postconditions_model_path = args.postconditions_model_path
+    if args.to_refine is not None:
+        config.to_refine = args.to_refine
     return config

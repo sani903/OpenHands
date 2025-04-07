@@ -3,7 +3,7 @@ import os
 import pickle
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, List, Optional
 
 import openhands
 from openhands.controller.state.task import RootTask
@@ -73,6 +73,7 @@ class State:
       - additional task-specific data
     """
 
+    logger.info('Initializing state')
     root_task: RootTask = field(default_factory=RootTask)
     session_id: str = ''
     # global iteration for the current task
@@ -97,6 +98,9 @@ class State:
     # start_id and end_id track the range of events in history
     start_id: int = -1
     end_id: int = -1
+    preconditions: Optional[str] = None
+    postconditions: Optional[str] = None
+    stuck_detector_reset_time: List[int] = field(default_factory=list)
 
     delegates: dict[tuple[int, int], tuple[str, str]] = field(default_factory=dict)
     # NOTE: This will never be used by the controller, but it can be used by different
