@@ -23,7 +23,6 @@ class StuckDetector:
     ]
 
     def __init__(self, state: State):
-        logger.info('Initializing StuckDetector')
         self.state = state
 
     def is_stuck(self, headless_mode: bool = True):

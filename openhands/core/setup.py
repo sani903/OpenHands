@@ -45,7 +45,6 @@ def create_runtime(
     Returns:
         The created Runtime instance (not yet connected or initialized).
     """
-    logger.info('Initializing runtime')
     # if sid is provided on the command line, use it as the name of the event stream
     # otherwise generate it on the basis of the configured jwt_secret
     # we can do this better, this is just so that the sid is retrieved when we want to restore the session
@@ -100,7 +99,6 @@ def initialize_repository_for_runtime(
     Returns:
         The repository directory path if a repository was cloned, None otherwise.
     """
-    logger.info('Initializing repository for runtime')
     # clone selected repository if provided
     github_token = (
         SecretStr(os.environ.get('GITHUB_TOKEN')) if not github_token else github_token
@@ -192,7 +190,6 @@ def create_controller(
     headless_mode: bool = True,
     replay_events: list[Event] | None = None,
 ) -> Tuple[AgentController, State | None]:
-    logger.info('Creating controller for the agent')
     event_stream = runtime.event_stream
     initial_state = None
     try:

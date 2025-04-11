@@ -4,6 +4,7 @@ import json
 import os
 import tempfile
 from typing import Any
+import openai
 
 import pandas as pd
 import toml
@@ -48,11 +49,58 @@ from openhands.utils.shutdown_listener import sleep_if_should_continue
 USE_HINT_TEXT = os.environ.get('USE_HINT_TEXT', 'false').lower() == 'true'
 RUN_WITH_BROWSING = os.environ.get('RUN_WITH_BROWSING', 'false').lower() == 'true'
 
-
 AGENT_CLS_TO_FAKE_USER_RESPONSE_FN = {
-    'CodeActAgent': codeact_user_response,
+    'CodeActAgent': lambda state: fake_user_response(state),
+    'CodeActSWEAgent': lambda state: fake_user_response(state),
 }
 
+def fake_user_response(state: State) -> str:
+    last_agent_message = state.get_last_agent_message()
+    if last_agent_message:
+        return fake_user.generate_reply(last_agent_message)
+    else:
+        return 'Please continue working on the task.'
+
+AGENT_CLS_TO_INST_SUFFIX = {
+    'CodeActAgent': 'When you think you have fixed the issue through code changes, please run the following command: <execute_bash> exit </execute_bash>.\n',
+    'CodeActSWEAgent': 'When you think you have fixed the issue through code changes, please run the following command: <execute_bash> exit </execute_bash>.\n',
+}
+
+client = openai.OpenAI(
+    api_key=os.environ['LITELLM_API_KEY'],
+    base_url='https://cmu.litellm.ai',
+)
+
+class FakeUser:
+    def __init__(self, issue, hints):
+        self.system_message = f"""
+        You are a GitHub user reporting an issue. Here are the details of your issue and environment:
+
+        Issue: {issue}
+
+        Hints: {hints}
+
+        Your task is to respond to questions from a coder who is trying to solve your issue. The coder has a summarized version of the issue you have. Follow these rules:
+        1. If the coder asks a question that is directly related to the information in the issue you have, provide that information.
+        2. Always stay in character as a user reporting an issue, not as an AI assistant.
+        3. Keep your responses concise and to the point.
+        4. The coder has limited turns to solve the issue. Do not interact with the coder beyond 3 turns.
+        Respond with "I don't have that information" if the question is unrelated or you're unsure.
+        """
+        self.chat_history = [{'role': 'system', 'content': self.system_message}]
+        self.turns = 0
+
+    def generate_reply(self, question):
+        if self.turns > 3:
+            return 'Please continue working on the task. Do NOT ask for more help.'
+        self.chat_history.append({'role': 'user', 'content': question.content})
+        response = client.chat.completions.create(
+            model='neulab/gpt-4o-2024-05-13', messages=self.chat_history
+        )
+        reply = response.choices[0].message.content
+        self.chat_history.append({'role': 'assistant', 'content': reply})
+        self.turns += 1
+        return reply
 
 def _get_swebench_workspace_dir_name(instance: pd.Series) -> str:
     return f'{instance.repo}__{instance.version}'.replace('/', '__')
@@ -68,7 +116,7 @@ def get_instruction(instance: pd.Series, metadata: EvalMetadata) -> MessageActio
 I've uploaded a python code repository in the directory {workspace_dir_name}. Consider the following issue description:
 
 <issue_description>
-{instance.problem_statement}
+{instance.original_issue}
 </issue_description>
 
 Can you help me implement the necessary changes to the repository so that the requirements specified in the <issue_description> are met?
@@ -78,31 +126,36 @@ Your task is to make the minimal changes to non-test files in the /workspace/{wo
 
 Follow these steps to resolve the issue:
 
-1. EXPLORATION: First, thoroughly explore the repository structure using tools like `find` and `grep`.
+1. CLARIFICATION: This is an important step to identify any missing information or ambiguities. You must first complete this step before starting the implementation.
+   - Review the problem statement
+   - Ask clarifying questions about unclear requirements, assumptions, or expected behavior.
+   - For information that you need clarification on, ask the user the questions and wait for a response instead of calling a tool in the same message.
+
+2. EXPLORATION: Thoroughly explore the repository structure using tools like `find` and `grep`.
    - Identify all files mentioned in the problem statement
    - Locate where the issue occurs in the codebase
    - Understand the surrounding context and dependencies
    - Use `grep` to search for relevant functions, classes, or error messages
 
-2. ANALYSIS: Based on your exploration, think carefully about the problem and propose 2-5 possible approaches to fix the issue.
+3. ANALYSIS: Based on your exploration, think carefully about the problem and propose 2-5 possible approaches to fix the issue.
    - Analyze the root cause of the problem
    - Consider trade-offs between different solutions
    - Select the most promising approach and explain your reasoning
 
-3. TEST CREATION: Before implementing any fix, create a script to reproduce and verify the issue.
+4. TEST CREATION: Before implementing any fix, create a script to reproduce and verify the issue.
    - Look at existing test files in the repository to understand the test format/structure
    - Create a minimal reproduction script that demonstrates the issue
    - Run your script to confirm the error exists
 
-4. IMPLEMENTATION: Edit the source code to implement your chosen solution.
+5. IMPLEMENTATION: Edit the source code to implement your chosen solution.
    - Make minimal, focused changes to fix the issue
 
-5. VERIFICATION: Test your implementation thoroughly.
+6. VERIFICATION: Test your implementation thoroughly.
    - Run your reproduction script to verify the fix works
    - Add edge cases to your test script to ensure comprehensive coverage
    - Run existing tests related to the modified code to ensure you haven't broken anything
 
-6. FINAL REVIEW: Carefully re-read the problem description and compare your changes with the base commit {instance["base_commit"]}.
+7. FINAL REVIEW: Carefully re-read the problem description and compare your changes with the base commit {instance["base_commit"]}.
    - Ensure you've fully addressed all requirements
    - Run any tests in the repository related to:
      * The issue you are fixing
@@ -112,6 +165,66 @@ Follow these steps to resolve the issue:
 
 Be thorough in your exploration, testing, and reasoning. It's fine if your thinking process is lengthy - quality and completeness are more important than brevity.
 """
+#     instruction = f"""
+# <uploaded_files>
+# /workspace/{workspace_dir_name}
+# </uploaded_files>
+
+# I've uploaded a python code repository in the directory {workspace_dir_name}. Consider the following issue description:
+
+# <issue_description>
+# {instance.problem_statement}
+# </issue_description>
+
+# Can you help me implement the necessary changes to the repository so that the requirements specified in the <issue_description> are met?
+# I've already taken care of all changes to any of the test files described in the <issue_description>. This means you DON'T have to modify the testing logic or any of the tests in any way!
+# Also the development Python environment is already set up for you (i.e., all dependencies already installed), so you don't need to install other packages.
+# Your task is to make the minimal changes to non-test files in the /workspace/{workspace_dir_name} directory to ensure the <issue_description> is satisfied.
+
+# Follow these steps to resolve the issue:
+
+# 1. CLARIFICATION: This is an important step to identify any missing information or ambiguities. You must first complete this step before starting the implementation.
+#    - Review the problem statement
+#    - Use the provided checklist as a guide of information that you need to check you have.
+#    - Ask clarifying questions about unclear requirements, assumptions, or expected behavior.
+#    - Look at each item very carefully to ensure you have all the information you need instead of trying to solve the issue with incomplete information which has a high chance of being wrong.
+#    - After identifying all information that is missing, identify the missing information that you must ask the user and information that is not as important for the solution process or can be recovered from the codebase.
+#    - For information that you need clarification on, ask the user the questions and wait for a response instead of calling a tool in the same message.
+
+# 2. EXPLORATION: Thoroughly explore the repository structure using tools like `find` and `grep`.
+#    - Identify all files mentioned in the problem statement
+#    - Locate where the issue occurs in the codebase
+#    - Understand the surrounding context and dependencies
+#    - Use `grep` to search for relevant functions, classes, or error messages
+
+# 3. ANALYSIS: Based on your exploration, think carefully about the problem and propose 2-5 possible approaches to fix the issue.
+#    - Analyze the root cause of the problem
+#    - Consider trade-offs between different solutions
+#    - Select the most promising approach and explain your reasoning
+
+# 4. TEST CREATION: Before implementing any fix, create a script to reproduce and verify the issue.
+#    - Look at existing test files in the repository to understand the test format/structure
+#    - Create a minimal reproduction script that demonstrates the issue
+#    - Run your script to confirm the error exists
+
+# 5. IMPLEMENTATION: Edit the source code to implement your chosen solution.
+#    - Make minimal, focused changes to fix the issue
+
+# 6. VERIFICATION: Test your implementation thoroughly.
+#    - Run your reproduction script to verify the fix works
+#    - Add edge cases to your test script to ensure comprehensive coverage
+#    - Run existing tests related to the modified code to ensure you haven't broken anything
+
+# 7. FINAL REVIEW: Carefully re-read the problem description and compare your changes with the base commit {instance["base_commit"]}.
+#    - Ensure you've fully addressed all requirements
+#    - Run any tests in the repository related to:
+#      * The issue you are fixing
+#      * The files you modified
+#      * The functions you changed
+#    - If any tests fail, revise your implementation until all tests pass
+
+# Be thorough in your exploration, testing, and reasoning. It's fine if your thinking process is lengthy - quality and completeness are more important than brevity.
+# """
 
     if RUN_WITH_BROWSING:
         instruction += (
@@ -311,15 +424,21 @@ def initialize_runtime(
         f'Failed to source /swe_util/instance_swe_entry.sh: {str(obs)}',
     )
 
-    action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
-    action.set_hard_timeout(600)
-    logger.info(action, extra={'msg_type': 'ACTION'})
-    obs = runtime.run_action(action)
-    logger.info(obs, extra={'msg_type': 'OBSERVATION'})
-    assert_and_raise(
-        obs.exit_code == 0,
-        f'Failed to cd to /workspace/{workspace_dir_name}: {str(obs)}',
-    )
+    try:
+        action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
+        action.set_hard_timeout(600)
+        logger.info(action, extra={'msg_type': 'ACTION'})
+        obs = runtime.run_action(action)
+        logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+        assert obs.exit_code == 0
+    except Exception:
+        alt_name = workspace_dir_name.rsplit('.0', 1)[0]
+        action = CmdRunAction(command=f'cd /workspace/{alt_name}')
+        action.set_hard_timeout(600)
+        logger.info(action, extra={'msg_type': 'ACTION'})
+        obs = runtime.run_action(action)
+        logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+        assert obs.exit_code == 0
 
     action = CmdRunAction(command='git reset --hard')
     action.set_hard_timeout(600)
@@ -368,11 +487,21 @@ def complete_runtime(
     obs: CmdOutputObservation
     workspace_dir_name = _get_swebench_workspace_dir_name(instance)
 
-    action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
-    action.set_hard_timeout(600)
-    logger.info(action, extra={'msg_type': 'ACTION'})
-    obs = runtime.run_action(action)
-    logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+    try:
+        action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
+        action.set_hard_timeout(600)
+        logger.info(action, extra={'msg_type': 'ACTION'})
+        obs = runtime.run_action(action)
+        logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+        assert obs.exit_code == 0
+    except Exception:
+        alt_name = workspace_dir_name.rsplit('.0', 1)[0]
+        action = CmdRunAction(command=f'cd /workspace/{alt_name}')
+        action.set_hard_timeout(600)
+        logger.info(action, extra={'msg_type': 'ACTION'})
+        obs = runtime.run_action(action)
+        logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+        assert obs.exit_code == 0
 
     if obs.exit_code == -1:
         # The previous command is still running
@@ -383,11 +512,21 @@ def complete_runtime(
         logger.info(obs, extra={'msg_type': 'OBSERVATION'})
 
         # Then run the command again
-        action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
-        action.set_hard_timeout(600)
-        logger.info(action, extra={'msg_type': 'ACTION'})
-        obs = runtime.run_action(action)
-        logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+        try:
+            action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
+            action.set_hard_timeout(600)
+            logger.info(action, extra={'msg_type': 'ACTION'})
+            obs = runtime.run_action(action)
+            logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+            assert obs.exit_code == 0
+        except Exception:
+            alt_name = workspace_dir_name.rsplit('.0', 1)[0]
+            action = CmdRunAction(command=f'cd /workspace/{alt_name}')
+            action.set_hard_timeout(600)
+            logger.info(action, extra={'msg_type': 'ACTION'})
+            obs = runtime.run_action(action)
+            logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+            assert obs.exit_code == 0
 
     if obs.exit_code == -1:
         # The previous command is still running
@@ -398,11 +537,21 @@ def complete_runtime(
         logger.info(obs, extra={'msg_type': 'OBSERVATION'})
 
         # Then run the command again
-        action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
-        action.set_hard_timeout(600)
-        logger.info(action, extra={'msg_type': 'ACTION'})
-        obs = runtime.run_action(action)
-        logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+        try:
+            action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
+            action.set_hard_timeout(600)
+            logger.info(action, extra={'msg_type': 'ACTION'})
+            obs = runtime.run_action(action)
+            logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+            assert obs.exit_code == 0
+        except Exception:
+            alt_name = workspace_dir_name.rsplit('.0', 1)[0]
+            action = CmdRunAction(command=f'cd /workspace/{alt_name}')
+            action.set_hard_timeout(600)
+            logger.info(action, extra={'msg_type': 'ACTION'})
+            obs = runtime.run_action(action)
+            logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+            assert obs.exit_code == 0
 
     assert_and_raise(
         isinstance(obs, CmdOutputObservation) and obs.exit_code == 0,
@@ -494,7 +643,10 @@ def process_instance(
     runtime_failure_count: int = 0,
 ) -> EvalOutput:
     config = get_config(instance, metadata)
-
+    global fake_user
+    original_issue = instance.original_issue
+    issue = str(original_issue)
+    fake_user = FakeUser(issue=issue, hints=instance.hints_text)
     # Setup the logger properly, so you can run multi-processing to parallelize the evaluation
     if reset_logger:
         log_dir = os.path.join(metadata.eval_output_dir, 'infer_logs')
@@ -617,6 +769,12 @@ if __name__ == '__main__':
         help='data set to evaluate on, either full-test or lite-test',
     )
     parser.add_argument(
+        '--csv_file',
+        type=str,
+        default='evaluation/benchmarks/swe_bench/data/swe_bench_preconditions.xlsx',
+        help='Path to the CSV file containing the dataset',
+    )
+    parser.add_argument(
         '--split',
         type=str,
         default='test',
@@ -626,8 +784,11 @@ if __name__ == '__main__':
 
     # NOTE: It is preferable to load datasets from huggingface datasets and perform post-processing
     # so we don't need to manage file uploading to OpenHands's repo
-    dataset = load_dataset(args.dataset, split=args.split)
-    swe_bench_tests = filter_dataset(dataset.to_pandas(), 'instance_id')
+    # dataset = load_dataset(args.dataset, split=args.split)
+    csv_filepath = args.csv_file
+    dataset = pd.read_excel(csv_filepath)
+    logger.info(f'Loaded dataset from {csv_filepath}')
+    swe_bench_tests = filter_dataset(dataset, 'instance_id')
     logger.info(
         f'Loaded dataset {args.dataset} with split {args.split}: {len(swe_bench_tests)} tasks'
     )

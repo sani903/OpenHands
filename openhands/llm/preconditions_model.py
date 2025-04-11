@@ -4,22 +4,17 @@ from openai import OpenAI
 
 from openhands.core.logger import openhands_logger as logger
 
-logger.info('message')
-
 
 class LocalPreConditionsModel:
     def __init__(self, model_path):
         self.model_path = model_path
         self.model = None
-        print(f'[PreModel] Initializing with: {model_path}')
 
         if not model_path or model_path == 'test':
-            print('[PreModel] Using dummy mode')
+            pass
         elif model_path.startswith(('openai', 'neulab', 'litellm')):
-            print(f'[PreModel] Using API model: {model_path}')
             self.model = model_path
         else:
-            print(f'[PreModel] Using local model: {model_path}')
             import torch
             from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -29,21 +24,21 @@ class LocalPreConditionsModel:
             )
 
     async def generate_preconditions(self, prompt):
-        print('[PreModel] Generating checklist...')
 
         if not self.model:
             return '- Sample checklist item 1\n- Sample checklist item 2\n- Sample checklist item 3'
 
         if isinstance(self.model, str):  # API model
             client = OpenAI(
-                api_key='sk-baRON8zoJp23Pg9j_6ld3Q', base_url='https://cmu.litellm.ai'
+                api_key='', base_url='https://cmu.litellm.ai'
             )
 
             checklist_prompt = (
                 'You are analyzing a software engineering task.\n'
                 'Generate a checklist of key information a developer would need to fully complete the task '
                 'based only on the <issue_description>. The key information must not be steps in the solution. '
-                'Instead they are details that should be included in the issue to make it solvable. '
+                'Instead they are details that should be included in the issue to make it solvable. ' 
+                'Phrase each checklist item as a yes or no question of whether the input contains the particular important information.'
                 'Consider the various steps in solving the issue, and based on those steps, what information '
                 'might be required in the Github issue. Limit to 5 items.\n'
                 f'<issue_description>\n{prompt}\n</issue_description>\n\n'

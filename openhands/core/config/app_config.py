@@ -13,7 +13,6 @@ from openhands.core.config.extended_config import ExtendedConfig
 from openhands.core.config.llm_config import LLMConfig
 from openhands.core.config.sandbox_config import SandboxConfig
 from openhands.core.config.security_config import SecurityConfig
-from openhands.core.logger import openhands_logger as lg
 
 
 class AppConfig(BaseModel):
@@ -98,7 +97,6 @@ class AppConfig(BaseModel):
     defaults_dict: ClassVar[dict] = {}
 
     model_config = {'extra': 'forbid'}
-    lg.info('Initializing AppConfig')
 
     def get_llm_config(self, name='llm') -> LLMConfig:
         """'llm' is the name for default config (for backward compatibility prior to 0.8)."""

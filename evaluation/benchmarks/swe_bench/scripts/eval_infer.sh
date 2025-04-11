@@ -14,7 +14,7 @@ fi
 # If instance_id is empty, it means we want to eval on the whole $PROCESS_FILEPATH
 # otherwise, we want to eval on the instance_id
 INSTANCE_ID=$2
-DATASET_NAME=${3:-"princeton-nlp/SWE-bench_Lite"}
+DATASET_NAME=${3:-"princeton-nlp/SWE-bench_Verified"}
 SPLIT=${4:-"test"}
 
 echo "INSTANCE_ID: $INSTANCE_ID"

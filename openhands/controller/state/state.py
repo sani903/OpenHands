@@ -73,7 +73,6 @@ class State:
       - additional task-specific data
     """
 
-    logger.info('Initializing state')
     root_task: RootTask = field(default_factory=RootTask)
     session_id: str = ''
     # global iteration for the current task

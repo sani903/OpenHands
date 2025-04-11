@@ -135,7 +135,6 @@ class AgentController:
             status_callback: Optional callback function to handle status updates.
             replay_events: A list of logs to replay.
         """
-        logger.info('init agent controller')
         self.id = sid or event_stream.sid
         self.agent = agent
         self.headless_mode = headless_mode
@@ -191,7 +190,6 @@ class AgentController:
         # If self.to_refine is False, then we pass the checklist and expect a message back from the agent on how many items it has completed.
         self.postconditions_passed = False
         self.initial_task: str | None = None
-        logger.info('AgentController initialized')
 
     async def close(self, set_stop_state=True) -> None:
         """Closes the agent controller, canceling any ongoing tasks and unsubscribing from the event stream.
@@ -449,7 +447,7 @@ class AgentController:
                         f'Error generating postconditions: {e}. Continuing without postconditions.',
                     )
                 if self.to_refine:
-                    refinement_prompt = 'Check how many of the items have been completed from this checklist and refine your solution based on the incomplete items.'
+                    refinement_prompt = 'Check how many of the items have been completed from this checklist and refine your solution using the incomplete items as loose guidance.'
                     self.state.max_iterations = (
                         self.state.iteration + self._initial_max_iterations
                     )
@@ -460,8 +458,7 @@ class AgentController:
                         EventSource.USER,
                     )
                 else:
-                    completed_items_prompt = 'Check how many of the items have been completed from this checklist and return the number of completed items within <completed></completed> tags.'
-                    # Two turns added for buffer
+                    completed_items_prompt = "You've reached the maximum number of steps. Check how many of the items have been completed from this checklist and return the number of completed items out of the total within <completed></completed> tags. For example, if 2 out of 5 items are completed, return <completed>2/5</completed>."                    # Two turns added for buffer
                     self.state.max_iterations = self.state.iteration + 2
                     self.event_stream.add_event(
                         MessageAction(
@@ -847,7 +844,7 @@ class AgentController:
                     # Return early to let the agent continue
                     return
                 else:
-                    completed_items_prompt = "You've reached the maximum number of steps. Check how many of the items have been completed from this checklist and return the number of completed items within <completed></completed> tags."
+                    completed_items_prompt = "You've reached the maximum number of steps. Check how many of the items have been completed from this checklist and return the number of completed items out of the total within <completed></completed> tags. For example, if 2 out of 5 items are completed, return <completed>2/5</completed>."
                     # Add buffer iterations
                     self.state.max_iterations = self.state.iteration + 2
                     self.event_stream.add_event(
@@ -907,7 +904,7 @@ class AgentController:
                     # Return early to prevent handling the stuck error
                     return
                 else:
-                    completed_items_prompt = 'Check how many of the items have been completed from this checklist and return the number of completed items within <completed></completed> tags.'
+                    completed_items_prompt = "You've reached the maximum number of steps. Check how many of the items have been completed from this checklist and return the number of completed items out of the total within <completed></completed> tags. For example, if 2 out of 5 items are completed, return <completed>2/5</completed>."
                     # Add some buffer iterations
                     self.state.max_iterations = self.state.iteration + 2
                     self.event_stream.add_event(
@@ -1380,9 +1377,9 @@ class AgentController:
         """
         augmented_content = (
             f'{user_task.content}\n\n'
-            'CHECKLIST:\n'
+            'IMPORTANT: CLARIFICATION CHECKLIST:\n'
             f'{checklist}\n'
-            'Please ensure you have the required information for all of the checklist items above. Else, ask me any doubts or clarifications you need.'
+            'Please ensure you have the required information for all of the checklist items above. Look carefully at each item to decide if the provided information sufficiently addresses the item. Each item is a yes or no question. If your answer is no to any of the questions, think carefully if the information is important to the solution and cannot be recovered from the codebase. For information you need clarification on, ask the user and wait for their response. First complete the clarification step before starting with the task.'
         )
         augmented_task = MessageAction(content=augmented_content)
         return augmented_task
@@ -1426,8 +1423,8 @@ class AgentController:
                 start_id=start_id,
                 end_id=end_id,
                 reverse=False,
-                filter_out_type=self.filter_out,
-                filter_hidden=True,
+                filter_out_type=None,
+                filter_hidden=False,
             )
         )
         # Convert each event to trajectory format
