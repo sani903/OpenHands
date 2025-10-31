@@ -3,6 +3,7 @@ import copy
 import os
 import traceback
 from typing import Callable, ClassVar, Type
+import re
 
 import litellm  # noqa
 from litellm.exceptions import (  # noqa
@@ -172,24 +173,26 @@ class AgentController:
         self.to_refine: bool = to_refine
         self.preconditions_model: LocalPreConditionsModel | None = None
         self.postconditions_model: LocalPostConditionsModel | None = None
-        try:
-            if preconditions_model:
-                self.preconditions_model = LocalPreConditionsModel(preconditions_model)
-            if postconditions_model:
-                self.postconditions_model = LocalPostConditionsModel(
-                    postconditions_model
-                )
-                self.to_refine = to_refine
-        except Exception as e:
-            logger.error(
-                f'Failed to initialize preconditions/postconditions models: {e}'
+        # try:
+        if preconditions_model:
+            print(f"[DEBUG] preconditions_model = {preconditions_model!r}")
+            self.preconditions_model = LocalPreConditionsModel(preconditions_model)
+        if postconditions_model:
+            self.postconditions_model = LocalPostConditionsModel(
+                postconditions_model
             )
-            self.preconditions_model = None
-            self.postconditions_model = None
+            self.to_refine = to_refine
+        # except Exception as e:
+        #     logger.error(
+        #         f'Failed to initialize preconditions/postconditions models: {e}'
+        #     )
+        # self.preconditions_model = None
+        # self.postconditions_model = None
         # If postconditions_model is not None, and self.to_refine is True, then we pass the checklist and double the max_iterations to allow the model a chance to refine the task.
         # If self.to_refine is False, then we pass the checklist and expect a message back from the agent on how many items it has completed.
         self.postconditions_passed = False
         self.initial_task: str | None = None
+        self.completion_passed: bool = False
 
     async def close(self, set_stop_state=True) -> None:
         """Closes the agent controller, canceling any ongoing tasks and unsubscribing from the event stream.
@@ -447,7 +450,7 @@ class AgentController:
                         f'Error generating postconditions: {e}. Continuing without postconditions.',
                     )
                 if self.to_refine:
-                    refinement_prompt = 'Check how many of the items have been completed from this checklist and refine your solution using the incomplete items as loose guidance.'
+                    refinement_prompt = 'First, check how many of the items have been completed from this checklist. To reliably check how many items have been completed, run the tests provided for the checklist items that can be verified with tests. For ones without a test case, provide a justification of why they are complete or incomplete. Provide a report of completion for each checklist item either through test cases or through justification one by one. Once you have reliably tested or justified the items in the checklist, refine your solution using the incomplete items as guidance.'
                     self.state.max_iterations = (
                         self.state.iteration + self._initial_max_iterations
                     )
@@ -458,11 +461,16 @@ class AgentController:
                         EventSource.USER,
                     )
                 else:
-                    completed_items_prompt = "You've reached the maximum number of steps. Check how many of the items have been completed from this checklist and return the number of completed items out of the total within <completed></completed> tags. For example, if 2 out of 5 items are completed, return <completed>2/5</completed>."                    # Two turns added for buffer
-                    self.state.max_iterations = self.state.iteration + 2
+                    completed_items_prompt = "Run the following tests. You can modify the tests to make them executable but do not modify your implementations."
+                    # completed_items_prompt = "Check how many of the items have been completed from this checklist. To reliably check how many items have been completed, run the test file which consists of tests for the checklist items that can be verified with tests. For ones there is no test case for, if you think you can add a test case, do so and run it. Else, provide a justification of why they are complete or incomplete. Run the test cases before giving your judgement and you can modify the tests if any changes in your modifications to the code would lead to changes in the test files. Provide a report of completion for each checklist item either through test cases or through justification one by one. Try to run real tests for as many items as possible. Return the number of completed items out of the total within <completed></completed> tags. For example, if 2 out of 5 items are completed, return <completed>2/5</completed>."                    # Two turns added for buffer
+                    # completed_items_prompt = "Check how many of the items have been completed from this checklist. To reliably check how many items have been completed, create tests for each of the checklist items that can be verified with tests in one test file and run the test file to see which checklist items are satisfied and which ones are not. For ones that are not verifiable through test cases, provide a justification of why they are complete or incomplete. Run the test cases before giving your judgement. Provide a report of completion for each checklist item either through test cases or through justification one by one. Try to run real tests for as many items as possible. Return the number of completed items out of the total within <completed></completed> tags. For example, if 2 out of 5 items are completed, return <completed>2/5</completed>."                    # Two turns added for buffer
+                    self.state.max_iterations = (
+                        self.state.iteration + self._initial_max_iterations
+                    )
                     self.event_stream.add_event(
                         MessageAction(
-                            content=f'{completed_items_prompt}\nCHECKLIST:\n{postconditions}'
+                            # content=f'{completed_items_prompt}\nCHECKLIST:\n{postconditions}'
+                            content=f'{completed_items_prompt}\n{postconditions}'
                         ),
                         EventSource.USER,
                     )
@@ -520,7 +528,14 @@ class AgentController:
             logger.info(f'Handling user message: {action.content}')
             # Only augment the very first user message
             if not self._first_user_message_processed:
-                self.initial_task = action.content
+                text = action.content
+                instance_id_match = re.search(r"<instance>(.*?)</instance>", text)
+                instance_id = instance_id_match.group(1) if instance_id_match else None
+
+                # Remove the <instance>...</instance> and keep the rest
+                content_after_instance = re.sub(r"^<instance>.*?</instance>\s*", "", text, flags=re.DOTALL)
+                action.content = content_after_instance
+                self.initial_task = instance_id
                 self._first_user_message_processed = True
                 if self.preconditions_model:
                     logger.info('Generating checklist for the first user message')
@@ -829,7 +844,7 @@ class AgentController:
                         f'Error generating postconditions: {e}. Continuing without postconditions.',
                     )
                 if self.to_refine:
-                    refinement_prompt = "You've reached the maximum number of steps. Check how many of the items have been completed from this checklist and refine your solution based on the incomplete items."
+                    refinement_prompt = 'First, check how many of the items have been completed from this checklist. To reliably check how many items have been completed, run the tests provided for the checklist items that can be verified with tests. For ones without a test case, provide a justification of why they are complete or incomplete. Provide a report of completion for each checklist item either through test cases or through justification one by one. Once you have reliably tested or justified the items in the checklist, refine your solution using the incomplete items as guidance.'
                     # Extend iterations to allow agent to continue
                     self.state.max_iterations = (
                         self.state.iteration + self._initial_max_iterations
@@ -842,19 +857,25 @@ class AgentController:
                         EventSource.USER,
                     )
                     # Return early to let the agent continue
-                    return
                 else:
-                    completed_items_prompt = "You've reached the maximum number of steps. Check how many of the items have been completed from this checklist and return the number of completed items out of the total within <completed></completed> tags. For example, if 2 out of 5 items are completed, return <completed>2/5</completed>."
+                    completed_items_prompt = "Run the following tests. You can modify the tests to make them executable but do not modify your implementations."
+                    # completed_items_prompt = "Check how many of the items have been completed from this checklist. To reliably check how many items have been completed, run the test file which consists of tests for the checklist items that can be verified with tests. For ones there is no test case for, if you think you can add a test case, do so and run it. Else, provide a justification of why they are complete or incomplete. Run the test cases before giving your judgement and you can modify the tests if any changes in your modifications to the code would lead to changes in the test files. Provide a report of completion for each checklist item either through test cases or through justification one by one. Try to run real tests for as many items as possible. Return the number of completed items out of the total within <completed></completed> tags. For example, if 2 out of 5 items are completed, return <completed>2/5</completed>."                    # Two turns added for buffer
+                    # completed_items_prompt = "Check how many of the items have been completed from this checklist. To reliably check how many items have been completed, create tests for each of the checklist items that can be verified with tests in one test file and run the test file to see which checklist items are satisfied and which ones are not. For ones that are not verifiable through test cases, provide a justification of why they are complete or incomplete. Run the test cases before giving your judgement. Provide a report of completion for each checklist item either through test cases or through justification one by one. Try to run real tests for as many items as possible. Return the number of completed items out of the total within <completed></completed> tags. For example, if 2 out of 5 items are completed, return <completed>2/5</completed>."                    # Two turns added for buffer
+                    self.state.max_iterations = (
+                        self.state.iteration + self._initial_max_iterations
+                    )
                     # Add buffer iterations
-                    self.state.max_iterations = self.state.iteration + 2
                     self.event_stream.add_event(
                         MessageAction(
-                            content=f'{completed_items_prompt}\nCHECKLIST:\n{postconditions}'
+                            # content=f'{completed_items_prompt}\nCHECKLIST:\n{postconditions}'
+                            content=f'{completed_items_prompt}\n{postconditions}'
+
                         ),
                         EventSource.USER,
                     )
-                    # Return early to let the agent continue
-                    return
+                await self.set_agent_state_to(AgentState.RUNNING)
+                # Return early to let the agent continue
+                return
             stop_step = await self._handle_traffic_control(
                 'iteration', self.state.iteration, self.state.max_iterations
             )
@@ -885,7 +906,7 @@ class AgentController:
                         f'Error generating postconditions: {e}. Continuing without postconditions.',
                     )
                 if self.to_refine:
-                    refinement_prompt = 'Check how many of the items have been completed from this checklist and refine your solution based on the incomplete items.'
+                    refinement_prompt = 'First, check how many of the items have been completed from this checklist. To reliably check how many items have been completed, run the tests provided for the checklist items that can be verified with tests. For ones without a test case, provide a justification of why they are complete or incomplete. Provide a report of completion for each checklist item either through test cases or through justification one by one. Once you have reliably tested or justified the items in the checklist, refine your solution using the incomplete items as guidance.'
                     # Extend iterations to allow agent to continue
                     self.state.max_iterations = (
                         self.state.iteration + self._initial_max_iterations
@@ -904,12 +925,16 @@ class AgentController:
                     # Return early to prevent handling the stuck error
                     return
                 else:
-                    completed_items_prompt = "You've reached the maximum number of steps. Check how many of the items have been completed from this checklist and return the number of completed items out of the total within <completed></completed> tags. For example, if 2 out of 5 items are completed, return <completed>2/5</completed>."
-                    # Add some buffer iterations
-                    self.state.max_iterations = self.state.iteration + 2
+                    completed_items_prompt = "Run the following tests. You can modify the tests to make them executable but do not modify your implementations."
+                    # completed_items_prompt = "Check how many of the items have been completed from this checklist. To reliably check how many items have been completed, run the test file which consists of tests for the checklist items that can be verified with tests. For ones there is no test case for, if you think you can add a test case, do so and run it. Else, provide a justification of why they are complete or incomplete. Run the test cases before giving your judgement and you can modify the tests if any changes in your modifications to the code would lead to changes in the test files. Provide a report of completion for each checklist item either through test cases or through justification one by one. Try to run real tests for as many items as possible. Return the number of completed items out of the total within <completed></completed> tags. For example, if 2 out of 5 items are completed, return <completed>2/5</completed>."                    # Two turns added for buffer
+                    # completed_items_prompt = "Check how many of the items have been completed from this checklist. To reliably check how many items have been completed, create tests for each of the checklist items that can be verified with tests in one test file and run the test file to see which checklist items are satisfied and which ones are not. For ones that are not verifiable through test cases, provide a justification of why they are complete or incomplete. Run the test cases before giving your judgement. Provide a report of completion for each checklist item either through test cases or through justification one by one. Try to run real tests for as many items as possible. Return the number of completed items out of the total within <completed></completed> tags. For example, if 2 out of 5 items are completed, return <completed>2/5</completed>."                    # Two turns added for buffer
+                    self.state.max_iterations = (
+                        self.state.iteration + self._initial_max_iterations
+                    )
                     self.event_stream.add_event(
                         MessageAction(
-                            content=f'{completed_items_prompt}\nCHECKLIST:\n{postconditions}'
+                            # content=f'{completed_items_prompt}\nCHECKLIST:\n{postconditions}'
+                            content=f'{completed_items_prompt}\n{postconditions}'
                         ),
                         EventSource.USER,
                     )
@@ -919,7 +944,6 @@ class AgentController:
                     await self.set_agent_state_to(AgentState.RUNNING)
                     # Return early to prevent handling the stuck error
                     return
-
             # If we get here, either postconditions check isn't needed or already done
             await self._react_to_exception(
                 AgentStuckInLoopError('Agent got stuck in a loop')
@@ -1377,9 +1401,10 @@ class AgentController:
         """
         augmented_content = (
             f'{user_task.content}\n\n'
-            'IMPORTANT: CLARIFICATION CHECKLIST:\n'
+            'IMPORTANT: CLARIFICATION QUESTIONS:\n'
             f'{checklist}\n'
-            'Please ensure you have the required information for all of the checklist items above. Look carefully at each item to decide if the provided information sufficiently addresses the item. Each item is a yes or no question. If your answer is no to any of the questions, think carefully if the information is important to the solution and cannot be recovered from the codebase. For information you need clarification on, ask the user and wait for their response. First complete the clarification step before starting with the task.'
+            'REMEMBER: DO NOT call the finish action when you want to talk to the user. Only use it when you are done with the solution. Ask the questions and wait for user response before proceeding with any tool calls.'
+            # 'Please use this as a guide of required information. Look carefully at each item to decide if the provided information sufficiently addresses the item. Each item is a yes or no question. If your answer is no to any of the questions, think carefully if the information is important to the solution and cannot be recovered from the codebase. For information you need clarification on, ask the user and wait for their response. First complete the clarification step before starting with the task.'
         )
         augmented_task = MessageAction(content=augmented_content)
         return augmented_task

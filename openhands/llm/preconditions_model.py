@@ -1,73 +1,63 @@
 import re
-
+import torch
+import json
 from openai import OpenAI
-
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from openhands.core.logger import openhands_logger as logger
-
+import pandas as pd
 
 class LocalPreConditionsModel:
     def __init__(self, model_path):
-        self.model_path = model_path
-        self.model = None
-
-        if not model_path or model_path == 'test':
-            pass
-        elif model_path.startswith(('openai', 'neulab', 'litellm')):
-            self.model = model_path
+        # Load the inference results CSV instead of checklists
+        df = pd.read_csv("swe_bench_preconditions_inference_rl.csv")
+        
+        # Find the row matching the instance_id (model_path parameter)
+        matching_rows = df.loc[df['instance_id'] == model_path]
+        
+        if matching_rows.empty:
+            logger.warning(f"No matching instance_id found for: {model_path}")
+            self.questions = []
         else:
-            import torch
-            from transformers import AutoModelForCausalLM, AutoTokenizer
+            # Get the extracted_questions (stored as JSON string)
+            questions_json = matching_rows['extracted_questions'].values[0]
+            
+            try:
+                # Parse the JSON string to get the list of questions
+                self.questions = json.loads(questions_json) if questions_json else []
+            except (json.JSONDecodeError, TypeError):
+                logger.error(f"Failed to parse questions JSON for instance_id: {model_path}")
+                self.questions = []
+        
+        logger.info(f"Loaded {len(self.questions)} questions for instance_id: {model_path}")
 
-            self.tokenizer = AutoTokenizer.from_pretrained(model_path)
-            self.model = AutoModelForCausalLM.from_pretrained(
-                model_path, torch_dtype=torch.bfloat16, device_map='auto'
-            )
+    def format_questions_as_numbered_list(self, questions):
+        """Format questions as a numbered list"""
+        if not questions:
+            return "No questions needed - all required information appears to be present."
+        
+        formatted_questions = []
+        for i, question in enumerate(questions, 1):
+            # Clean up the question if it already has numbering
+            clean_question = question.strip()
+            # Remove existing numbering if present
+            if clean_question and clean_question[0].isdigit():
+                # Find the first non-digit, non-dot, non-space character
+                match = re.match(r'^\d+\.?\s*', clean_question)
+                if match:
+                    clean_question = clean_question[match.end():].strip()
+            
+            formatted_questions.append(f"{i}. {clean_question}")
+        
+        return "\n".join(formatted_questions)
 
     async def generate_preconditions(self, prompt):
+        """Return the numbered list of questions for the given instance"""
+        return self.format_questions_as_numbered_list(self.questions)
 
-        if not self.model:
-            return '- Sample checklist item 1\n- Sample checklist item 2\n- Sample checklist item 3'
+    def get_questions_list(self):
+        """Return the raw list of questions"""
+        return self.questions
 
-        if isinstance(self.model, str):  # API model
-            client = OpenAI(
-                api_key='', base_url='https://cmu.litellm.ai'
-            )
-
-            checklist_prompt = (
-                'You are analyzing a software engineering task.\n'
-                'Generate a checklist of key information a developer would need to fully complete the task '
-                'based only on the <issue_description>. The key information must not be steps in the solution. '
-                'Instead they are details that should be included in the issue to make it solvable. ' 
-                'Phrase each checklist item as a yes or no question of whether the input contains the particular important information.'
-                'Consider the various steps in solving the issue, and based on those steps, what information '
-                'might be required in the Github issue. Limit to 5 items.\n'
-                f'<issue_description>\n{prompt}\n</issue_description>\n\n'
-                'Wrap each checklist item with <checklist_item>...</checklist_item>.'
-            )
-
-            response = client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {'role': 'system', 'content': 'You are a helpful assistant.'},
-                    {'role': 'user', 'content': checklist_prompt},
-                ],
-                temperature=0.0,
-                max_tokens=2000,
-            )
-
-            raw = response.choices[0].message.content
-            items = re.findall(
-                r'<checklist_item>(.*?)</checklist_item>', raw, re.DOTALL
-            )
-            return '\n'.join(f'- {item.strip()}' for item in items) if items else raw
-
-        else:  # Local model
-            inputs = self.tokenizer(prompt, return_tensors='pt').to(self.model.device)
-            output = self.model.generate(
-                **inputs,
-                max_new_tokens=256,
-                temperature=0.7,
-                top_p=0.95,
-                do_sample=True,
-            )
-            return self.tokenizer.decode(output[0], skip_special_tokens=True)
+    def get_questions_count(self):
+        """Return the number of questions"""
+        return len(self.questions)

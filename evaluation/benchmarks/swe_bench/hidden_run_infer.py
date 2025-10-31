@@ -4,6 +4,7 @@ import json
 import os
 import tempfile
 from typing import Any
+import openai
 
 import pandas as pd
 import toml
@@ -48,11 +49,58 @@ from openhands.utils.shutdown_listener import sleep_if_should_continue
 USE_HINT_TEXT = os.environ.get('USE_HINT_TEXT', 'false').lower() == 'true'
 RUN_WITH_BROWSING = os.environ.get('RUN_WITH_BROWSING', 'false').lower() == 'true'
 
-
 AGENT_CLS_TO_FAKE_USER_RESPONSE_FN = {
-    'CodeActAgent': codeact_user_response,
+    'CodeActAgent': lambda state: fake_user_response(state),
+    'CodeActSWEAgent': lambda state: fake_user_response(state),
 }
 
+def fake_user_response(state: State) -> str:
+    last_agent_message = state.get_last_agent_message()
+    if last_agent_message:
+        return fake_user.generate_reply(last_agent_message)
+    else:
+        return 'Please continue working on the task.'
+
+AGENT_CLS_TO_INST_SUFFIX = {
+    'CodeActAgent': 'When you think you have fixed the issue through code changes, please run the following command: <execute_bash> exit </execute_bash>.\n',
+    'CodeActSWEAgent': 'When you think you have fixed the issue through code changes, please run the following command: <execute_bash> exit </execute_bash>.\n',
+}
+
+client = openai.OpenAI(
+    api_key=os.environ['LITELLM_API_KEY'],
+    base_url='https://cmu.litellm.ai',
+)
+
+class FakeUser:
+    def __init__(self, issue, hints):
+        self.system_message = f"""
+        You are a GitHub user reporting an issue. Here are the details of your issue and environment:
+
+        Issue: {issue}
+
+        Hints: {hints}
+
+        Your task is to respond to questions from a coder who is trying to solve your issue. The coder has a summarized version of the issue you have. Follow these rules:
+        1. If the coder asks a question that is directly related to the information in the issue you have, provide that information.
+        2. Always stay in character as a user reporting an issue, not as an AI assistant.
+        3. Keep your responses concise and to the point.
+        4. The coder has limited turns to solve the issue. Do not interact with the coder beyond 3 turns.
+        Respond with "I don't have that information" if the question is unrelated or you're unsure.
+        """
+        self.chat_history = [{'role': 'system', 'content': self.system_message}]
+        self.turns = 0
+
+    def generate_reply(self, question):
+        if self.turns > 3:
+            return 'Please continue working on the task. Do NOT ask for more help.'
+        self.chat_history.append({'role': 'user', 'content': question.content})
+        response = client.chat.completions.create(
+            model='neulab/gpt-4o-2024-05-13', messages=self.chat_history
+        )
+        reply = response.choices[0].message.content
+        self.chat_history.append({'role': 'assistant', 'content': reply})
+        self.turns += 1
+        return reply
 
 def _get_swebench_workspace_dir_name(instance: pd.Series) -> str:
     return f'{instance.repo}__{instance.version}'.replace('/', '__')
@@ -61,7 +109,6 @@ def _get_swebench_workspace_dir_name(instance: pd.Series) -> str:
 def get_instruction(instance: pd.Series, metadata: EvalMetadata) -> MessageAction:
     workspace_dir_name = _get_swebench_workspace_dir_name(instance)
     instruction = f"""
-<instance>{instance.instance_id}</instance>
 <uploaded_files>
 /workspace/{workspace_dir_name}
 </uploaded_files>
@@ -113,7 +160,6 @@ Follow these steps to resolve the issue:
 
 Be thorough in your exploration, testing, and reasoning. It's fine if your thinking process is lengthy - quality and completeness are more important than brevity.
 """
-
     if RUN_WITH_BROWSING:
         instruction += (
             '<IMPORTANT!>\n'
@@ -200,7 +246,7 @@ def get_config(
         workspace_base=None,
         workspace_mount_path=None,
         preconditions_model_path=None,
-        postconditions_model_path="test",
+        postconditions_model_path=None,
         to_refine=False,
     )
     config.set_llm_config(
@@ -312,15 +358,21 @@ def initialize_runtime(
         f'Failed to source /swe_util/instance_swe_entry.sh: {str(obs)}',
     )
 
-    action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
-    action.set_hard_timeout(600)
-    logger.info(action, extra={'msg_type': 'ACTION'})
-    obs = runtime.run_action(action)
-    logger.info(obs, extra={'msg_type': 'OBSERVATION'})
-    assert_and_raise(
-        obs.exit_code == 0,
-        f'Failed to cd to /workspace/{workspace_dir_name}: {str(obs)}',
-    )
+    try:
+        action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
+        action.set_hard_timeout(600)
+        logger.info(action, extra={'msg_type': 'ACTION'})
+        obs = runtime.run_action(action)
+        logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+        assert obs.exit_code == 0
+    except Exception:
+        alt_name = workspace_dir_name.rsplit('.0', 1)[0]
+        action = CmdRunAction(command=f'cd /workspace/{alt_name}')
+        action.set_hard_timeout(600)
+        logger.info(action, extra={'msg_type': 'ACTION'})
+        obs = runtime.run_action(action)
+        logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+        assert obs.exit_code == 0
 
     action = CmdRunAction(command='git reset --hard')
     action.set_hard_timeout(600)
@@ -369,11 +421,21 @@ def complete_runtime(
     obs: CmdOutputObservation
     workspace_dir_name = _get_swebench_workspace_dir_name(instance)
 
-    action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
-    action.set_hard_timeout(600)
-    logger.info(action, extra={'msg_type': 'ACTION'})
-    obs = runtime.run_action(action)
-    logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+    try:
+        action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
+        action.set_hard_timeout(600)
+        logger.info(action, extra={'msg_type': 'ACTION'})
+        obs = runtime.run_action(action)
+        logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+        assert obs.exit_code == 0
+    except Exception:
+        alt_name = workspace_dir_name.rsplit('.0', 1)[0]
+        action = CmdRunAction(command=f'cd /workspace/{alt_name}')
+        action.set_hard_timeout(600)
+        logger.info(action, extra={'msg_type': 'ACTION'})
+        obs = runtime.run_action(action)
+        logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+        assert obs.exit_code == 0
 
     if obs.exit_code == -1:
         # The previous command is still running
@@ -384,11 +446,21 @@ def complete_runtime(
         logger.info(obs, extra={'msg_type': 'OBSERVATION'})
 
         # Then run the command again
-        action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
-        action.set_hard_timeout(600)
-        logger.info(action, extra={'msg_type': 'ACTION'})
-        obs = runtime.run_action(action)
-        logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+        try:
+            action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
+            action.set_hard_timeout(600)
+            logger.info(action, extra={'msg_type': 'ACTION'})
+            obs = runtime.run_action(action)
+            logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+            assert obs.exit_code == 0
+        except Exception:
+            alt_name = workspace_dir_name.rsplit('.0', 1)[0]
+            action = CmdRunAction(command=f'cd /workspace/{alt_name}')
+            action.set_hard_timeout(600)
+            logger.info(action, extra={'msg_type': 'ACTION'})
+            obs = runtime.run_action(action)
+            logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+            assert obs.exit_code == 0
 
     if obs.exit_code == -1:
         # The previous command is still running
@@ -399,11 +471,21 @@ def complete_runtime(
         logger.info(obs, extra={'msg_type': 'OBSERVATION'})
 
         # Then run the command again
-        action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
-        action.set_hard_timeout(600)
-        logger.info(action, extra={'msg_type': 'ACTION'})
-        obs = runtime.run_action(action)
-        logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+        try:
+            action = CmdRunAction(command=f'cd /workspace/{workspace_dir_name}')
+            action.set_hard_timeout(600)
+            logger.info(action, extra={'msg_type': 'ACTION'})
+            obs = runtime.run_action(action)
+            logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+            assert obs.exit_code == 0
+        except Exception:
+            alt_name = workspace_dir_name.rsplit('.0', 1)[0]
+            action = CmdRunAction(command=f'cd /workspace/{alt_name}')
+            action.set_hard_timeout(600)
+            logger.info(action, extra={'msg_type': 'ACTION'})
+            obs = runtime.run_action(action)
+            logger.info(obs, extra={'msg_type': 'OBSERVATION'})
+            assert obs.exit_code == 0
 
     assert_and_raise(
         isinstance(obs, CmdOutputObservation) and obs.exit_code == 0,
@@ -495,7 +577,10 @@ def process_instance(
     runtime_failure_count: int = 0,
 ) -> EvalOutput:
     config = get_config(instance, metadata)
-
+    global fake_user
+    original_issue = instance.original_issue
+    issue = str(original_issue)
+    fake_user = FakeUser(issue=issue, hints=instance.hints_text)
     # Setup the logger properly, so you can run multi-processing to parallelize the evaluation
     if reset_logger:
         log_dir = os.path.join(metadata.eval_output_dir, 'infer_logs')
@@ -618,6 +703,12 @@ if __name__ == '__main__':
         help='data set to evaluate on, either full-test or lite-test',
     )
     parser.add_argument(
+        '--csv_file',
+        type=str,
+        default='evaluation/benchmarks/swe_bench/data/swe_bench_preconditions.xlsx',
+        help='Path to the CSV file containing the dataset',
+    )
+    parser.add_argument(
         '--split',
         type=str,
         default='test',
@@ -627,8 +718,11 @@ if __name__ == '__main__':
 
     # NOTE: It is preferable to load datasets from huggingface datasets and perform post-processing
     # so we don't need to manage file uploading to OpenHands's repo
-    dataset = load_dataset(args.dataset, split=args.split)
-    swe_bench_tests = filter_dataset(dataset.to_pandas(), 'instance_id')
+    # dataset = load_dataset(args.dataset, split=args.split)
+    csv_filepath = args.csv_file
+    dataset = pd.read_excel(csv_filepath)
+    logger.info(f'Loaded dataset from {csv_filepath}')
+    swe_bench_tests = filter_dataset(dataset, 'instance_id')
     logger.info(
         f'Loaded dataset {args.dataset} with split {args.split}: {len(swe_bench_tests)} tasks'
     )
