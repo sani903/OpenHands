@@ -5,6 +5,7 @@ import { I18nKey } from "#/i18n/declaration";
 import { Feedback } from "#/api/open-hands.types";
 import { useSubmitFeedback } from "#/hooks/mutation/use-submit-feedback";
 import { BrandButton } from "../settings/brand-button";
+import { useActiveConversation } from "#/hooks/query/use-active-conversation";
 
 const FEEDBACK_VERSION = "1.0";
 const VIEWER_PAGE = "https://www.all-hands.dev/share";
@@ -16,6 +17,8 @@ interface FeedbackFormProps {
 
 export function FeedbackForm({ onClose, polarity }: FeedbackFormProps) {
   const { t } = useTranslation();
+  const { data: conversation } = useActiveConversation();
+
   const copiedToClipboardToast = () => {
     hotToast(t(I18nKey.FEEDBACK$PASSWORD_COPIED_MESSAGE), {
       icon: "📋",
@@ -59,6 +62,15 @@ export function FeedbackForm({ onClose, polarity }: FeedbackFormProps) {
 
   const { mutate: submitFeedback, isPending } = useSubmitFeedback();
 
+  // TODO: Hide FeedbackForm for V1 conversations
+  // This is a temporary measure and may be re-enabled in the future
+  const isV1Conversation = conversation?.conversation_version === "V1";
+
+  // Don't render anything for V1 conversations
+  if (isV1Conversation) {
+    return null;
+  }
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
     const formData = new FormData(event.currentTarget);
@@ -100,7 +112,7 @@ export function FeedbackForm({ onClose, polarity }: FeedbackFormProps) {
           name="email"
           type="email"
           placeholder={t(I18nKey.FEEDBACK$EMAIL_PLACEHOLDER)}
-          className="bg-[#27272A] px-3 py-[10px] rounded"
+          className="bg-[#27272A] px-3 py-[10px] rounded-sm"
         />
       </label>
 
@@ -127,7 +139,9 @@ export function FeedbackForm({ onClose, polarity }: FeedbackFormProps) {
           className="grow"
           isDisabled={isPending}
         >
-          {t(I18nKey.FEEDBACK$SHARE_LABEL)}
+          {isPending
+            ? t(I18nKey.FEEDBACK$SUBMITTING_LABEL)
+            : t(I18nKey.FEEDBACK$SHARE_LABEL)}
         </BrandButton>
         <BrandButton
           type="button"
@@ -139,6 +153,11 @@ export function FeedbackForm({ onClose, polarity }: FeedbackFormProps) {
           {t(I18nKey.FEEDBACK$CANCEL_LABEL)}
         </BrandButton>
       </div>
+      {isPending && (
+        <p className="text-sm text-center text-neutral-400">
+          {t(I18nKey.FEEDBACK$SUBMITTING_MESSAGE)}
+        </p>
+      )}
     </form>
   );
 }

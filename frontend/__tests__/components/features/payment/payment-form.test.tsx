@@ -1,23 +1,30 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
-import OpenHands from "#/api/open-hands";
+import BillingService from "#/api/billing-service/billing-service.api";
+import OptionService from "#/api/option-service/option-service.api";
 import { PaymentForm } from "#/components/features/payment/payment-form";
+import { renderWithProviders } from "../../../../test-utils";
+
+// Mock the stripe checkout hook to avoid JSDOM navigation issues
+const mockMutate = vi.fn().mockResolvedValue(undefined);
+vi.mock("#/hooks/mutation/stripe/use-create-stripe-checkout-session", () => ({
+  useCreateStripeCheckoutSession: () => ({
+    mutate: mockMutate,
+    mutateAsync: vi.fn().mockResolvedValue(undefined),
+    isPending: false,
+  }),
+}));
 
 describe("PaymentForm", () => {
-  const getBalanceSpy = vi.spyOn(OpenHands, "getBalance");
-  const createCheckoutSessionSpy = vi.spyOn(OpenHands, "createCheckoutSession");
-  const getConfigSpy = vi.spyOn(OpenHands, "getConfig");
+  const getBalanceSpy = vi.spyOn(BillingService, "getBalance");
+  const createCheckoutSessionSpy = vi.spyOn(
+    BillingService,
+    "createCheckoutSession",
+  );
+  const getConfigSpy = vi.spyOn(OptionService, "getConfig");
 
-  const renderPaymentForm = () =>
-    render(<PaymentForm />, {
-      wrapper: ({ children }) => (
-        <QueryClientProvider client={new QueryClient()}>
-          {children}
-        </QueryClientProvider>
-      ),
-    });
+  const renderPaymentForm = () => renderWithProviders(<PaymentForm />);
 
   beforeEach(() => {
     // useBalance hook will return the balance only if the APP_MODE is "saas" and the billing feature is enabled
@@ -28,12 +35,16 @@ describe("PaymentForm", () => {
       FEATURE_FLAGS: {
         ENABLE_BILLING: true,
         HIDE_LLM_SETTINGS: false,
+        ENABLE_JIRA: false,
+        ENABLE_JIRA_DC: false,
+        ENABLE_LINEAR: false,
       },
     });
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    mockMutate.mockClear();
   });
 
   it("should render the users current balance", async () => {
@@ -61,25 +72,25 @@ describe("PaymentForm", () => {
     renderPaymentForm();
 
     const topUpInput = await screen.findByTestId("top-up-input");
-    await user.type(topUpInput, "50.12");
+    await user.type(topUpInput, "50");
 
     const topUpButton = screen.getByText("PAYMENT$ADD_CREDIT");
     await user.click(topUpButton);
 
-    expect(createCheckoutSessionSpy).toHaveBeenCalledWith(50.12);
+    expect(mockMutate).toHaveBeenCalledWith({ amount: 50 });
   });
 
-  it("should round the top-up amount to two decimal places", async () => {
+  it("should only accept integer values", async () => {
     const user = userEvent.setup();
     renderPaymentForm();
 
     const topUpInput = await screen.findByTestId("top-up-input");
-    await user.type(topUpInput, "50.125456");
+    await user.type(topUpInput, "50");
 
     const topUpButton = screen.getByText("PAYMENT$ADD_CREDIT");
     await user.click(topUpButton);
 
-    expect(createCheckoutSessionSpy).toHaveBeenCalledWith(50.13);
+    expect(mockMutate).toHaveBeenCalledWith({ amount: 50 });
   });
 
   it("should disable the top-up button if the user enters an invalid amount", async () => {
@@ -100,7 +111,7 @@ describe("PaymentForm", () => {
     renderPaymentForm();
 
     const topUpInput = await screen.findByTestId("top-up-input");
-    await user.type(topUpInput, "50.12");
+    await user.type(topUpInput, "50");
 
     const topUpButton = screen.getByText("PAYMENT$ADD_CREDIT");
     await user.click(topUpButton);
@@ -114,12 +125,12 @@ describe("PaymentForm", () => {
       renderPaymentForm();
 
       const topUpInput = await screen.findByTestId("top-up-input");
-      await user.type(topUpInput, "-50.12");
+      await user.type(topUpInput, "-50");
 
       const topUpButton = screen.getByText("PAYMENT$ADD_CREDIT");
       await user.click(topUpButton);
 
-      expect(createCheckoutSessionSpy).not.toHaveBeenCalled();
+      expect(mockMutate).not.toHaveBeenCalled();
     });
 
     test("user enters an empty string", async () => {
@@ -132,20 +143,22 @@ describe("PaymentForm", () => {
       const topUpButton = screen.getByText("PAYMENT$ADD_CREDIT");
       await user.click(topUpButton);
 
-      expect(createCheckoutSessionSpy).not.toHaveBeenCalled();
+      expect(mockMutate).not.toHaveBeenCalled();
     });
 
     test("user enters a non-numeric value", async () => {
       const user = userEvent.setup();
       renderPaymentForm();
 
+      // With type="number", the browser would prevent non-numeric input,
+      // but we'll test the validation logic anyway
       const topUpInput = await screen.findByTestId("top-up-input");
       await user.type(topUpInput, "abc");
 
       const topUpButton = screen.getByText("PAYMENT$ADD_CREDIT");
       await user.click(topUpButton);
 
-      expect(createCheckoutSessionSpy).not.toHaveBeenCalled();
+      expect(mockMutate).not.toHaveBeenCalled();
     });
 
     test("user enters less than the minimum amount", async () => {
@@ -158,7 +171,21 @@ describe("PaymentForm", () => {
       const topUpButton = screen.getByText("PAYMENT$ADD_CREDIT");
       await user.click(topUpButton);
 
-      expect(createCheckoutSessionSpy).not.toHaveBeenCalled();
+      expect(mockMutate).not.toHaveBeenCalled();
+    });
+
+    test("user enters a decimal value", async () => {
+      const user = userEvent.setup();
+      renderPaymentForm();
+
+      // With step="1", the browser would validate this, but we'll test our validation logic
+      const topUpInput = await screen.findByTestId("top-up-input");
+      await user.type(topUpInput, "50.5");
+
+      const topUpButton = screen.getByText("PAYMENT$ADD_CREDIT");
+      await user.click(topUpButton);
+
+      expect(mockMutate).not.toHaveBeenCalled();
     });
   });
 });

@@ -49,3 +49,15 @@ class ObservationType(str, Enum):
 
     RECALL = 'recall'
     """Result of a recall operation. This can be the workspace context, a microagent, or other types of information."""
+
+    MCP = 'mcp'
+    """Result of a MCP Server operation"""
+
+    DOWNLOAD = 'download'
+    """Result of downloading/opening a file via the browser"""
+
+    TASK_TRACKING = 'task_tracking'
+    """Result of a task tracking operation"""
+
+    LOOP_DETECTION = 'loop_detection'
+    """Results of a dead-loop detection"""

@@ -1,16 +1,16 @@
 import { useMutation } from "@tanstack/react-query";
-import OpenHands from "#/api/open-hands";
-import { useConversation } from "#/context/conversation-context";
+import ConversationService from "#/api/conversation-service/conversation-service.api";
 
-type UploadFilesArgs = {
-  files: File[];
-};
-
-export const useUploadFiles = () => {
-  const { conversationId } = useConversation();
-
-  return useMutation({
-    mutationFn: ({ files }: UploadFilesArgs) =>
-      OpenHands.uploadFiles(conversationId, files),
+export const useUploadFiles = () =>
+  useMutation({
+    mutationKey: ["upload-files"],
+    mutationFn: (variables: { conversationId: string; files: File[] }) =>
+      ConversationService.uploadFiles(
+        variables.conversationId!,
+        variables.files,
+      ),
+    onSuccess: async () => {},
+    meta: {
+      disableToast: true,
+    },
   });
-};

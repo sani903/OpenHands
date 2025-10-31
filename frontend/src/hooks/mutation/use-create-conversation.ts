@@ -1,43 +1,100 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router";
 import posthog from "posthog-js";
-import { useDispatch, useSelector } from "react-redux";
-import OpenHands from "#/api/open-hands";
-import { setInitialPrompt } from "#/state/initial-query-slice";
-import { RootState } from "#/store";
+import ConversationService from "#/api/conversation-service/conversation-service.api";
+import V1ConversationService from "#/api/conversation-service/v1-conversation-service.api";
+import { SuggestedTask } from "#/utils/types";
+import { Provider } from "#/types/settings";
+import { CreateMicroagent, Conversation } from "#/api/open-hands.types";
+import { USE_V1_CONVERSATION_API } from "#/utils/feature-flags";
+
+interface CreateConversationVariables {
+  query?: string;
+  repository?: {
+    name: string;
+    gitProvider: Provider;
+    branch?: string;
+  };
+  suggestedTask?: SuggestedTask;
+  conversationInstructions?: string;
+  createMicroagent?: CreateMicroagent;
+}
+
+// Response type that combines both V1 and legacy responses
+interface CreateConversationResponse extends Partial<Conversation> {
+  conversation_id: string;
+  session_api_key: string | null;
+  url: string | null;
+  // V1 specific fields
+  v1_task_id?: string;
+  is_v1?: boolean;
+}
 
 export const useCreateConversation = () => {
-  const navigate = useNavigate();
-  const dispatch = useDispatch();
   const queryClient = useQueryClient();
 
-  const { selectedRepository, files, replayJson } = useSelector(
-    (state: RootState) => state.initialQuery,
-  );
-
   return useMutation({
-    mutationFn: async (variables: { q?: string }) => {
-      if (variables.q) dispatch(setInitialPrompt(variables.q));
+    mutationKey: ["create-conversation"],
+    mutationFn: async (
+      variables: CreateConversationVariables,
+    ): Promise<CreateConversationResponse> => {
+      const {
+        query,
+        repository,
+        suggestedTask,
+        conversationInstructions,
+        createMicroagent,
+      } = variables;
 
-      return OpenHands.createConversation(
-        selectedRepository || undefined,
-        variables.q,
-        files,
-        replayJson || undefined,
+      const useV1 = USE_V1_CONVERSATION_API() && !createMicroagent;
+
+      if (useV1) {
+        // Use V1 API - creates a conversation start task
+        const startTask = await V1ConversationService.createConversation(
+          repository?.name,
+          repository?.gitProvider,
+          query,
+          repository?.branch,
+          conversationInstructions,
+          undefined, // trigger - will be set by backend
+        );
+
+        // Return a special task ID that the frontend will recognize
+        // Format: "task-{uuid}" so the conversation screen can poll the task
+        // Once the task is ready, it will navigate to the actual conversation ID
+        return {
+          conversation_id: `task-${startTask.id}`,
+          session_api_key: null,
+          url: startTask.agent_server_url,
+          v1_task_id: startTask.id,
+          is_v1: true,
+        };
+      }
+
+      // Use legacy API
+      const conversation = await ConversationService.createConversation(
+        repository?.name,
+        repository?.gitProvider,
+        query,
+        suggestedTask,
+        repository?.branch,
+        conversationInstructions,
+        createMicroagent,
       );
+
+      return {
+        ...conversation,
+        is_v1: false,
+      };
     },
-    onSuccess: async ({ conversation_id: conversationId }, { q }) => {
+    onSuccess: async (_, { query, repository }) => {
       posthog.capture("initial_query_submitted", {
         entry_point: "task_form",
-        query_character_length: q?.length,
-        has_repository: !!selectedRepository,
-        has_files: files.length > 0,
-        has_replay_json: !!replayJson,
+        query_character_length: query?.length,
+        has_repository: !!repository,
       });
-      await queryClient.invalidateQueries({
+      queryClient.removeQueries({
         queryKey: ["user", "conversations"],
       });
-      navigate(`/conversations/${conversationId}`);
     },
   });
 };

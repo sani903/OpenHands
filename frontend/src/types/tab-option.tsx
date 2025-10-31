@@ -1,21 +1,10 @@
 enum TabOption {
   PLANNER = "planner",
-  CODE = "code",
   BROWSER = "browser",
-  JUPYTER = "jupyter",
+  VSCODE = "vscode",
 }
 
-type TabType =
-  | TabOption.PLANNER
-  | TabOption.CODE
-  | TabOption.BROWSER
-  | TabOption.JUPYTER;
-
-const AllTabs = [
-  TabOption.CODE,
-  TabOption.BROWSER,
-  TabOption.PLANNER,
-  TabOption.JUPYTER,
-];
+type TabType = TabOption.PLANNER | TabOption.BROWSER | TabOption.VSCODE;
+const AllTabs = [TabOption.VSCODE, TabOption.BROWSER, TabOption.PLANNER];
 
 export { AllTabs, TabOption, type TabType };

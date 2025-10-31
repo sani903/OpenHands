@@ -1,39 +1,46 @@
-import { beforeAll, describe, expect, it, vi } from "vitest";
-import { render } from "@testing-library/react";
-import { afterEach } from "node:test";
-import { ReactNode } from "react";
+import { beforeAll, describe, expect, it, vi, afterEach } from "vitest";
 import { useTerminal } from "#/hooks/use-terminal";
-import { Command } from "#/state/command-slice";
+import { Command, useCommandStore } from "#/state/command-store";
+import { renderWithProviders } from "../../test-utils";
 
-interface TestTerminalComponentProps {
-  commands: Command[];
-  secrets: string[];
-}
+// Mock the WsClient context
+vi.mock("#/context/ws-client-provider", () => ({
+  useWsClient: () => ({
+    send: vi.fn(),
+    status: "CONNECTED",
+    isLoadingMessages: false,
+    events: [],
+  }),
+}));
 
-function TestTerminalComponent({
-  commands,
-  secrets,
-}: TestTerminalComponentProps) {
-  const ref = useTerminal({ commands, secrets, disabled: false });
+// Mock useActiveConversation
+vi.mock("#/hooks/query/use-active-conversation", () => ({
+  useActiveConversation: () => ({
+    data: {
+      id: "test-conversation-id",
+      conversation_version: "V0",
+    },
+    isFetched: true,
+  }),
+}));
+
+// Mock useConversationWebSocket (returns null for V0 conversations)
+vi.mock("#/contexts/conversation-websocket-context", () => ({
+  useConversationWebSocket: () => null,
+}));
+
+function TestTerminalComponent() {
+  const ref = useTerminal();
   return <div ref={ref} />;
 }
 
-interface WrapperProps {
-  children: ReactNode;
-}
-
-function Wrapper({ children }: WrapperProps) {
-  return <div>{children}</div>;
-}
-
 describe("useTerminal", () => {
+  // Terminal is read-only - no longer tests user input functionality
   const mockTerminal = vi.hoisted(() => ({
     loadAddon: vi.fn(),
     open: vi.fn(),
     write: vi.fn(),
     writeln: vi.fn(),
-    onKey: vi.fn(),
-    attachCustomKeyEventHandler: vi.fn(),
     dispose: vi.fn(),
   }));
 
@@ -54,12 +61,12 @@ describe("useTerminal", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    // Reset command store between tests
+    useCommandStore.setState({ commands: [] });
   });
 
   it("should render", () => {
-    render(<TestTerminalComponent commands={[]} secrets={[]} />, {
-      wrapper: Wrapper,
-    });
+    renderWithProviders(<TestTerminalComponent />);
   });
 
   it("should render the commands in the terminal", () => {
@@ -68,42 +75,12 @@ describe("useTerminal", () => {
       { content: "hello", type: "output" },
     ];
 
-    render(<TestTerminalComponent commands={commands} secrets={[]} />, {
-      wrapper: Wrapper,
-    });
+    // Set commands in store before rendering to ensure they're picked up during initialization
+    useCommandStore.setState({ commands });
+
+    renderWithProviders(<TestTerminalComponent />);
 
     expect(mockTerminal.writeln).toHaveBeenNthCalledWith(1, "echo hello");
     expect(mockTerminal.writeln).toHaveBeenNthCalledWith(2, "hello");
-  });
-
-  it("should hide secrets in the terminal", () => {
-    const secret = "super_secret_github_token";
-    const anotherSecret = "super_secret_another_token";
-    const commands: Command[] = [
-      {
-        content: `export GITHUB_TOKEN=${secret},${anotherSecret},${secret}`,
-        type: "input",
-      },
-      { content: secret, type: "output" },
-    ];
-
-    render(
-      <TestTerminalComponent
-        commands={commands}
-        secrets={[secret, anotherSecret]}
-      />,
-      {
-        wrapper: Wrapper,
-      },
-    );
-
-    // BUG: `vi.clearAllMocks()` does not clear the number of calls
-    // therefore, we need to assume the order of the calls based
-    // on the test order
-    expect(mockTerminal.writeln).toHaveBeenNthCalledWith(
-      3,
-      `export GITHUB_TOKEN=${"*".repeat(10)},${"*".repeat(10)},${"*".repeat(10)}`,
-    );
-    expect(mockTerminal.writeln).toHaveBeenNthCalledWith(4, "*".repeat(10));
   });
 });

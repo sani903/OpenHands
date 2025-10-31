@@ -1,10 +1,13 @@
+from dataclasses import dataclass
+from typing import Optional
+
 from openhands.controller.state.state import State
 from openhands.core.logger import openhands_logger as logger
+from openhands.events import Event, EventSource
 from openhands.events.action.action import Action
 from openhands.events.action.commands import IPythonRunCellAction
 from openhands.events.action.empty import NullAction
 from openhands.events.action.message import MessageAction
-from openhands.events.event import Event, EventSource
 from openhands.events.observation import (
     CmdOutputObservation,
     IPythonRunCellObservation,
@@ -22,10 +25,17 @@ class StuckDetector:
         'SyntaxError: incomplete input',
     ]
 
+    @dataclass
+    class StuckAnalysis:
+        loop_type: str
+        loop_repeat_times: int
+        loop_start_idx: int  # in filtered_history
+
     def __init__(self, state: State):
         self.state = state
+        self.stuck_analysis: Optional[StuckDetector.StuckAnalysis] = None
 
-    def is_stuck(self, headless_mode: bool = True):
+    def is_stuck(self, headless_mode: bool = True) -> bool:
         """Checks if the agent is stuck in a loop.
 
         Args:
@@ -36,14 +46,7 @@ class StuckDetector:
         Returns:
             bool: True if the agent is stuck in a loop, False otherwise.
         """
-        # Check if we recently reset the detector
-        if (
-            hasattr(self.state, 'stuck_detector_reset_time')
-            and self.state.stuck_detector_reset_time
-        ):
-            # If the detector was reset within the last 3 iterations, don't detect loops yet
-            if self.state.iteration - self.state.stuck_detector_reset_time[-1] < 3:
-                return False
+        filtered_history_offset = 0
         if not headless_mode:
             # In interactive mode, only look at history after the last user message
             last_user_msg_idx = -1
@@ -54,7 +57,7 @@ class StuckDetector:
                 ):
                     last_user_msg_idx = len(self.state.history) - i - 1
                     break
-
+            filtered_history_offset = last_user_msg_idx + 1
             history_to_check = self.state.history[last_user_msg_idx + 1 :]
         else:
             # In headless mode, look at all history
@@ -94,30 +97,46 @@ class StuckDetector:
                 break
 
         # scenario 1: same action, same observation
-        if self._is_stuck_repeating_action_observation(last_actions, last_observations):
+        if self._is_stuck_repeating_action_observation(
+            last_actions, last_observations, filtered_history, filtered_history_offset
+        ):
             return True
 
         # scenario 2: same action, errors
-        if self._is_stuck_repeating_action_error(last_actions, last_observations):
+        if self._is_stuck_repeating_action_error(
+            last_actions, last_observations, filtered_history, filtered_history_offset
+        ):
             return True
 
         # scenario 3: monologue
-        if self._is_stuck_monologue(filtered_history):
+        if self._is_stuck_monologue(filtered_history, filtered_history_offset):
             return True
 
         # scenario 4: action, observation pattern on the last six steps
         if len(filtered_history) >= 6:
-            if self._is_stuck_action_observation_pattern(filtered_history):
+            if self._is_stuck_action_observation_pattern(
+                filtered_history, filtered_history_offset
+            ):
                 return True
 
         # scenario 5: context window error loop
         if len(filtered_history) >= 10:
-            if self._is_stuck_context_window_error(filtered_history):
+            if self._is_stuck_context_window_error(
+                filtered_history, filtered_history_offset
+            ):
                 return True
 
+        # Empty stuck_analysis when not stuck
+        self.stuck_analysis = None
         return False
 
-    def _is_stuck_repeating_action_observation(self, last_actions, last_observations):
+    def _is_stuck_repeating_action_observation(
+        self,
+        last_actions: list[Event],
+        last_observations: list[Event],
+        filtered_history: list[Event],
+        filtered_history_offset: int = 0,
+    ) -> bool:
         # scenario 1: same action, same observation
         # it takes 4 actions and 4 observations to detect a loop
         # assert len(last_actions) == 4 and len(last_observations) == 4
@@ -134,11 +153,23 @@ class StuckDetector:
 
             if actions_equal and observations_equal:
                 logger.warning('Action, Observation loop detected')
+                self.stuck_analysis = StuckDetector.StuckAnalysis(
+                    loop_type='repeating_action_observation',
+                    loop_repeat_times=4,
+                    loop_start_idx=filtered_history.index(last_actions[-1])
+                    + filtered_history_offset,
+                )
                 return True
 
         return False
 
-    def _is_stuck_repeating_action_error(self, last_actions, last_observations):
+    def _is_stuck_repeating_action_error(
+        self,
+        last_actions: list[Event],
+        last_observations: list[Event],
+        filtered_history: list[Event],
+        filtered_history_offset: int = 0,
+    ) -> bool:
         # scenario 2: same action, errors
         # it takes 3 actions and 3 observations to detect a loop
         # check if the last three actions are the same and result in errors
@@ -151,6 +182,12 @@ class StuckDetector:
             # and the last three observations are all errors?
             if all(isinstance(obs, ErrorObservation) for obs in last_observations[:3]):
                 logger.warning('Action, ErrorObservation loop detected')
+                self.stuck_analysis = StuckDetector.StuckAnalysis(
+                    loop_type='repeating_action_error',
+                    loop_repeat_times=3,
+                    loop_start_idx=filtered_history.index(last_actions[-1])
+                    + filtered_history_offset,
+                )
                 return True
             # or, are the last three observations all IPythonRunCellObservation with SyntaxError?
             elif all(
@@ -163,21 +200,45 @@ class StuckDetector:
                         'SyntaxError: unterminated string literal (detected at line'
                     ):
                         if self._check_for_consistent_line_error(
-                            last_observations[:3], error_message
+                            [
+                                obs
+                                for obs in last_observations[:3]
+                                if isinstance(obs, IPythonRunCellObservation)
+                            ],
+                            error_message,
                         ):
                             logger.warning(warning)
+                            self.stuck_analysis = StuckDetector.StuckAnalysis(
+                                loop_type='repeating_action_error',
+                                loop_repeat_times=3,
+                                loop_start_idx=filtered_history.index(last_actions[-1])
+                                + filtered_history_offset,
+                            )
                             return True
                     elif error_message in (
                         'SyntaxError: invalid syntax. Perhaps you forgot a comma?',
                         'SyntaxError: incomplete input',
                     ) and self._check_for_consistent_invalid_syntax(
-                        last_observations[:3], error_message
+                        [
+                            obs
+                            for obs in last_observations[:3]
+                            if isinstance(obs, IPythonRunCellObservation)
+                        ],
+                        error_message,
                     ):
                         logger.warning(warning)
+                        self.stuck_analysis = StuckDetector.StuckAnalysis(
+                            loop_type='repeating_action_error',
+                            loop_repeat_times=3,
+                            loop_start_idx=filtered_history.index(last_actions[-1])
+                            + filtered_history_offset,
+                        )
                         return True
         return False
 
-    def _check_for_consistent_invalid_syntax(self, observations, error_message):
+    def _check_for_consistent_invalid_syntax(
+        self, observations: list[IPythonRunCellObservation], error_message: str
+    ) -> bool:
         first_lines = []
         valid_observations = []
 
@@ -218,7 +279,9 @@ class StuckDetector:
             == 1
         )
 
-    def _check_for_consistent_line_error(self, observations, error_message):
+    def _check_for_consistent_line_error(
+        self, observations: list[IPythonRunCellObservation], error_message: str
+    ) -> bool:
         error_lines = []
 
         for obs in observations:
@@ -245,7 +308,9 @@ class StuckDetector:
         # and the 3rd-to-last line is identical across all occurrences
         return len(error_lines) == 3 and len(set(error_lines)) == 1
 
-    def _is_stuck_monologue(self, filtered_history):
+    def _is_stuck_monologue(
+        self, filtered_history: list[Event], filtered_history_offset: int = 0
+    ) -> bool:
         # scenario 3: monologue
         # check for repeated MessageActions with source=AGENT
         # see if the agent is engaged in a good old monologue, telling itself the same thing over and over
@@ -276,10 +341,17 @@ class StuckDetector:
 
                 if not has_observation_between:
                     logger.warning('Repeated MessageAction with source=AGENT detected')
+                    self.stuck_analysis = StuckDetector.StuckAnalysis(
+                        loop_type='monologue',
+                        loop_repeat_times=3,
+                        loop_start_idx=start_index + filtered_history_offset,
+                    )
                     return True
         return False
 
-    def _is_stuck_action_observation_pattern(self, filtered_history):
+    def _is_stuck_action_observation_pattern(
+        self, filtered_history: list[Event], filtered_history_offset: int = 0
+    ) -> bool:
         # scenario 4: action, observation pattern on the last six steps
         # check if the agent repeats the same (Action, Observation)
         # every other step in the last six steps
@@ -318,10 +390,18 @@ class StuckDetector:
 
             if actions_equal and observations_equal:
                 logger.warning('Action, Observation pattern detected')
+                self.stuck_analysis = StuckDetector.StuckAnalysis(
+                    loop_type='repeating_action_observation_pattern',
+                    loop_repeat_times=3,
+                    loop_start_idx=filtered_history.index(last_six_actions[-1])
+                    + filtered_history_offset,
+                )
                 return True
         return False
 
-    def _is_stuck_context_window_error(self, filtered_history):
+    def _is_stuck_context_window_error(
+        self, filtered_history: list[Event], filtered_history_offset: int = 0
+    ) -> bool:
         """Detects if we're stuck in a loop of context window errors.
 
         This happens when we repeatedly get context window errors and try to trim,
@@ -365,11 +445,16 @@ class StuckDetector:
                 logger.warning(
                     'Context window error loop detected - repeated condensation events'
                 )
+                self.stuck_analysis = StuckDetector.StuckAnalysis(
+                    loop_type='context_window_error',
+                    loop_repeat_times=2,
+                    loop_start_idx=start_idx + filtered_history_offset,
+                )
                 return True
 
         return False
 
-    def _eq_no_pid(self, obj1, obj2):
+    def _eq_no_pid(self, obj1: Event, obj2: Event) -> bool:
         if isinstance(obj1, IPythonRunCellAction) and isinstance(
             obj2, IPythonRunCellAction
         ):
@@ -394,18 +479,3 @@ class StuckDetector:
         else:
             # this is the default comparison
             return obj1 == obj2
-
-    def reset(self):
-        """
-        Resets the detector's state to allow the agent to continue.
-        This is typically called after intervention has been added to the event stream.
-        It prevents the detector from immediately identifying the same pattern again.
-        """
-        # The StuckDetector doesn't maintain much internal state beyond the reference to the agent's state
-        # We can't modify the history directly, but we can set a flag in the state to indicate
-        # that we've recently reset the detector
-        if not hasattr(self.state, 'stuck_detector_reset_time'):
-            self.state.stuck_detector_reset_time = []
-        # Add the current iteration to the reset times
-        self.state.stuck_detector_reset_time.append(self.state.iteration)
-        logger.info(f'Stuck detector reset at iteration {self.state.iteration}')

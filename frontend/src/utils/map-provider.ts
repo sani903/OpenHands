@@ -23,9 +23,19 @@ export const MAP_PROVIDER = {
   replicate: "Replicate",
   voyage: "Voyage AI",
   openrouter: "OpenRouter",
+  openhands: "OpenHands",
+  lemonade: "Lemonade",
+  clarifai: "Clarifai",
 };
 
 export const mapProvider = (provider: string) =>
   Object.keys(MAP_PROVIDER).includes(provider)
     ? MAP_PROVIDER[provider as keyof typeof MAP_PROVIDER]
     : provider;
+
+export const getProviderId = (displayName: string): string => {
+  const entry = Object.entries(MAP_PROVIDER).find(
+    ([, value]) => value === displayName,
+  );
+  return entry ? entry[0] : displayName;
+};

@@ -1,23 +1,15 @@
-import React from "react";
-import { generateGitHubAuthUrl } from "#/utils/generate-github-auth-url";
-import { GetConfigResponse } from "#/api/open-hands.types";
-import { useAuth } from "#/context/auth-context";
+import { useAuthUrl } from "./use-auth-url";
+import { GetConfigResponse } from "#/api/option-service/option.types";
 
 interface UseGitHubAuthUrlConfig {
   appMode: GetConfigResponse["APP_MODE"] | null;
   gitHubClientId: GetConfigResponse["GITHUB_CLIENT_ID"] | null;
+  authUrl?: GetConfigResponse["AUTH_URL"];
 }
 
-export const useGitHubAuthUrl = (config: UseGitHubAuthUrlConfig) => {
-  const { providersAreSet } = useAuth();
-
-  return React.useMemo(() => {
-    if (config.appMode === "saas" && !providersAreSet)
-      return generateGitHubAuthUrl(
-        config.gitHubClientId || "",
-        new URL(window.location.href),
-      );
-
-    return null;
-  }, [providersAreSet, config.appMode, config.gitHubClientId]);
-};
+export const useGitHubAuthUrl = (config: UseGitHubAuthUrlConfig) =>
+  useAuthUrl({
+    appMode: config.appMode,
+    identityProvider: "github",
+    authUrl: config.authUrl,
+  });
